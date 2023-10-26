@@ -1,0 +1,109 @@
+{
+  "version": "3.4",
+  "log": [
+    {
+      "contracts/IStakerData.sol:IStakerData": {
+        "src": "contracts/IStakerData.sol:4",
+        "inherit": [],
+        "libraries": [],
+        "methods": [
+          "stake(uint256,uint256)",
+          "withdraw(uint256)",
+          "getStake(address,uint256)",
+          "calculateStakeEarnings(address,uint256)",
+          "getAllStakes(address)",
+          "calculateTotalEarnings(address)"
+        ],
+        "linkReferences": [],
+        "errors": [],
+        "layout": {
+          "storage": [],
+          "types": {},
+          "layoutVersion": "1.2",
+          "flat": false,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.19"
+      },
+      "contracts/IStakingManagement.sol:IStakingControl": {
+        "src": "contracts/IStakingManagement.sol:4",
+        "inherit": [],
+        "libraries": [],
+        "methods": [
+          "addStakingPlan(uint256,uint256)",
+          "updateStakingPlan(uint256,uint256,uint256)",
+          "getStakingPlan(uint256)",
+          "getStakingPlans()"
+        ],
+        "linkReferences": [],
+        "errors": [],
+        "layout": {
+          "storage": [],
+          "types": {},
+          "layoutVersion": "1.2",
+          "flat": false,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.19"
+      }
+    },
+    {
+      "contracts/Lock.sol:Lock": {
+        "src": "contracts/Lock.sol:7",
+        "version": {
+          "withMetadata": "3d47aa69e75180036338a4964e79ac6c57f81da440fedb7a70da639c22d3cbe9",
+          "withoutMetadata": "4feaa558c949fa6f714e530bc74b2d62da568e343c77ce553b321f02d3af2e6a",
+          "linkedWithoutMetadata": "4feaa558c949fa6f714e530bc74b2d62da568e343c77ce553b321f02d3af2e6a"
+        },
+        "inherit": [],
+        "libraries": [],
+        "methods": [
+          "(uint256)",
+          "withdraw()"
+        ],
+        "linkReferences": [],
+        "errors": [
+          {
+            "kind": "constructor",
+            "contract": "Lock",
+            "src": "contracts/Lock.sol:13"
+          }
+        ],
+        "layout": {
+          "storage": [
+            {
+              "label": "unlockTime",
+              "offset": 0,
+              "slot": "0",
+              "type": "t_uint256",
+              "contract": "Lock",
+              "src": "contracts/Lock.sol:8"
+            },
+            {
+              "label": "owner",
+              "offset": 0,
+              "slot": "1",
+              "type": "t_address_payable",
+              "contract": "Lock",
+              "src": "contracts/Lock.sol:9"
+            }
+          ],
+          "types": {
+            "t_address_payable": {
+              "label": "address payable",
+              "numberOfBytes": "20"
+            },
+            "t_uint256": {
+              "label": "uint256",
+              "numberOfBytes": "32"
+            }
+          },
+          "layoutVersion": "1.2",
+          "flat": true,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.19"
+      }
+    }
+  ]
+}
