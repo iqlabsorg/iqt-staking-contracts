@@ -2,6 +2,598 @@
   "version": "3.4",
   "log": [
     {
+      "@openzeppelin/contracts/access/Ownable.sol:Ownable": {
+        "src": "@openzeppelin/contracts/access/Ownable.sol:20",
+        "inherit": [
+          "@openzeppelin/contracts/utils/Context.sol:Context"
+        ],
+        "libraries": [],
+        "methods": [
+          "owner()",
+          "renounceOwnership()",
+          "transferOwnership(address)"
+        ],
+        "linkReferences": [],
+        "errors": [
+          {
+            "kind": "constructor",
+            "contract": "Ownable",
+            "src": "@openzeppelin/contracts/access/Ownable.sol:28"
+          }
+        ],
+        "layout": {
+          "storage": [
+            {
+              "label": "_owner",
+              "offset": 0,
+              "slot": "0",
+              "type": "t_address",
+              "contract": "Ownable",
+              "src": "@openzeppelin/contracts/access/Ownable.sol:21"
+            }
+          ],
+          "types": {
+            "t_address": {
+              "label": "address",
+              "numberOfBytes": "20"
+            }
+          },
+          "layoutVersion": "1.2",
+          "flat": true,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.19"
+      },
+      "@openzeppelin/contracts/token/ERC20/IERC20.sol:IERC20": {
+        "src": "@openzeppelin/contracts/token/ERC20/IERC20.sol:9",
+        "inherit": [],
+        "libraries": [],
+        "methods": [
+          "totalSupply()",
+          "balanceOf(address)",
+          "transfer(address,uint256)",
+          "allowance(address,address)",
+          "approve(address,uint256)",
+          "transferFrom(address,address,uint256)"
+        ],
+        "linkReferences": [],
+        "errors": [],
+        "layout": {
+          "storage": [],
+          "types": {},
+          "layoutVersion": "1.2",
+          "flat": false,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.19"
+      },
+      "@openzeppelin/contracts/utils/Context.sol:Context": {
+        "src": "@openzeppelin/contracts/utils/Context.sol:16",
+        "inherit": [],
+        "libraries": [],
+        "methods": [],
+        "linkReferences": [],
+        "errors": [],
+        "layout": {
+          "storage": [],
+          "types": {},
+          "layoutVersion": "1.2",
+          "flat": false,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.19"
+      },
+      "@openzeppelin/contracts/utils/structs/EnumerableSet.sol:EnumerableSet": {
+        "src": "@openzeppelin/contracts/utils/structs/EnumerableSet.sol:41",
+        "version": {
+          "withMetadata": "8abbf8fcad8e30a7c9a196b93354358b978bf29496643a7332b221fcb3dca3de",
+          "withoutMetadata": "a64c6cf9c6ba9368f5132c93a0196b3204a7963dbb4dd05dfddb4ab23126b8db",
+          "linkedWithoutMetadata": "a64c6cf9c6ba9368f5132c93a0196b3204a7963dbb4dd05dfddb4ab23126b8db"
+        },
+        "inherit": [],
+        "libraries": [],
+        "methods": [],
+        "linkReferences": [],
+        "errors": [],
+        "layout": {
+          "storage": [],
+          "types": {},
+          "layoutVersion": "1.2",
+          "flat": false,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.19"
+      },
+      "contracts/library/Constants.sol:Constants": {
+        "src": "contracts/library/Constants.sol:4",
+        "version": {
+          "withMetadata": "6ed71286f95093c771b060d24e14aed6d5577cd6f9bcbb7fee152ef51ed712ce",
+          "withoutMetadata": "a64c6cf9c6ba9368f5132c93a0196b3204a7963dbb4dd05dfddb4ab23126b8db",
+          "linkedWithoutMetadata": "a64c6cf9c6ba9368f5132c93a0196b3204a7963dbb4dd05dfddb4ab23126b8db"
+        },
+        "inherit": [],
+        "libraries": [],
+        "methods": [],
+        "linkReferences": [],
+        "errors": [],
+        "layout": {
+          "storage": [],
+          "types": {},
+          "layoutVersion": "1.2",
+          "flat": false,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.19"
+      },
+      "contracts/staking-management/IStakingManagement.sol:IStakingManagement": {
+        "src": "contracts/staking-management/IStakingManagement.sol:4",
+        "inherit": [],
+        "libraries": [],
+        "methods": [
+          "addStakingPlan(uint256,uint16)",
+          "updateStakingPlan(uint256,uint256,uint16)",
+          "removeStakingPlan(uint256)",
+          "enableWithdraw()",
+          "disableWithdraw()",
+          "setStakingLimits(uint256,uint256)",
+          "setMininumStake(uint256)",
+          "setMaximumStake(uint256)",
+          "checkStakingPlanExists(uint256)",
+          "getStakingToken()",
+          "getStakingPlan(uint256)",
+          "getStakingPlans(uint256,uint256)",
+          "isWithdrawEnabled()",
+          "getStakingLimits()",
+          "getMinimumStake()",
+          "getMaximumStake()"
+        ],
+        "linkReferences": [],
+        "errors": [],
+        "layout": {
+          "storage": [],
+          "types": {},
+          "layoutVersion": "1.2",
+          "flat": false,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.19"
+      },
+      "contracts/staking-management/StakingManagement.sol:StakingManagement": {
+        "src": "contracts/staking-management/StakingManagement.sol:11",
+        "version": {
+          "withMetadata": "acbb545dd4ff08a168ac842a31e1603160987b91983a88db100cfe24450b6afe",
+          "withoutMetadata": "1be2a8bdbc300f54c938d31d036cabf92875434d736e7a992cf143dadcecf50a",
+          "linkedWithoutMetadata": "1be2a8bdbc300f54c938d31d036cabf92875434d736e7a992cf143dadcecf50a"
+        },
+        "inherit": [
+          "@openzeppelin/contracts/access/Ownable.sol:Ownable",
+          "@openzeppelin/contracts/utils/Context.sol:Context",
+          "contracts/staking-management/IStakingManagement.sol:IStakingManagement"
+        ],
+        "libraries": [
+          "@openzeppelin/contracts/utils/structs/EnumerableSet.sol:EnumerableSet",
+          "contracts/library/Constants.sol:Constants"
+        ],
+        "methods": [
+          "(address)",
+          "addStakingPlan(uint256,uint16)",
+          "updateStakingPlan(uint256,uint256,uint16)",
+          "removeStakingPlan(uint256)",
+          "enableWithdraw()",
+          "disableWithdraw()",
+          "setStakingLimits(uint256,uint256)",
+          "setMininumStake(uint256)",
+          "setMaximumStake(uint256)",
+          "checkStakingPlanExists(uint256)",
+          "getStakingToken()",
+          "getStakingPlan(uint256)",
+          "getStakingPlans(uint256,uint256)",
+          "isWithdrawEnabled()",
+          "getStakingLimits()",
+          "getMinimumStake()",
+          "getMaximumStake()"
+        ],
+        "linkReferences": [],
+        "errors": [
+          {
+            "kind": "constructor",
+            "contract": "StakingManagement",
+            "src": "contracts/staking-management/StakingManagement.sol:48"
+          }
+        ],
+        "layout": {
+          "storage": [
+            {
+              "label": "_owner",
+              "offset": 0,
+              "slot": "0",
+              "type": "t_address",
+              "contract": "Ownable",
+              "src": "@openzeppelin/contracts/access/Ownable.sol:21"
+            },
+            {
+              "label": "stakingToken",
+              "offset": 0,
+              "slot": "1",
+              "type": "t_contract(IERC20)190",
+              "contract": "StakingManagement",
+              "src": "contracts/staking-management/StakingManagement.sol:17"
+            },
+            {
+              "label": "_stakingPlans",
+              "offset": 0,
+              "slot": "2",
+              "type": "t_mapping(t_uint256,t_struct(StakingPlan)881_storage)",
+              "contract": "StakingManagement",
+              "src": "contracts/staking-management/StakingManagement.sol:22"
+            },
+            {
+              "label": "_stakingPlanIds",
+              "offset": 0,
+              "slot": "3",
+              "type": "t_struct(UintSet)695_storage",
+              "contract": "StakingManagement",
+              "src": "contracts/staking-management/StakingManagement.sol:27"
+            },
+            {
+              "label": "_withdrawalEnabled",
+              "offset": 0,
+              "slot": "5",
+              "type": "t_bool",
+              "contract": "StakingManagement",
+              "src": "contracts/staking-management/StakingManagement.sol:32"
+            },
+            {
+              "label": "_minimumStake",
+              "offset": 0,
+              "slot": "6",
+              "type": "t_uint256",
+              "contract": "StakingManagement",
+              "src": "contracts/staking-management/StakingManagement.sol:37"
+            },
+            {
+              "label": "_maximumStake",
+              "offset": 0,
+              "slot": "7",
+              "type": "t_uint256",
+              "contract": "StakingManagement",
+              "src": "contracts/staking-management/StakingManagement.sol:42"
+            }
+          ],
+          "types": {
+            "t_address": {
+              "label": "address",
+              "numberOfBytes": "20"
+            },
+            "t_array(t_bytes32)dyn_storage": {
+              "label": "bytes32[]",
+              "numberOfBytes": "32"
+            },
+            "t_bool": {
+              "label": "bool",
+              "numberOfBytes": "1"
+            },
+            "t_bytes32": {
+              "label": "bytes32",
+              "numberOfBytes": "32"
+            },
+            "t_contract(IERC20)190": {
+              "label": "contract IERC20",
+              "numberOfBytes": "20"
+            },
+            "t_mapping(t_bytes32,t_uint256)": {
+              "label": "mapping(bytes32 => uint256)",
+              "numberOfBytes": "32"
+            },
+            "t_mapping(t_uint256,t_struct(StakingPlan)881_storage)": {
+              "label": "mapping(uint256 => struct IStakingManagement.StakingPlan)",
+              "numberOfBytes": "32"
+            },
+            "t_struct(Set)223_storage": {
+              "label": "struct EnumerableSet.Set",
+              "members": [
+                {
+                  "label": "_values",
+                  "type": "t_array(t_bytes32)dyn_storage",
+                  "offset": 0,
+                  "slot": "0"
+                },
+                {
+                  "label": "_indexes",
+                  "type": "t_mapping(t_bytes32,t_uint256)",
+                  "offset": 0,
+                  "slot": "1"
+                }
+              ],
+              "numberOfBytes": "64"
+            },
+            "t_struct(StakingPlan)881_storage": {
+              "label": "struct IStakingManagement.StakingPlan",
+              "members": [
+                {
+                  "label": "duration",
+                  "type": "t_uint256",
+                  "offset": 0,
+                  "slot": "0"
+                },
+                {
+                  "label": "apy",
+                  "type": "t_uint16",
+                  "offset": 0,
+                  "slot": "1"
+                }
+              ],
+              "numberOfBytes": "64"
+            },
+            "t_struct(UintSet)695_storage": {
+              "label": "struct EnumerableSet.UintSet",
+              "members": [
+                {
+                  "label": "_inner",
+                  "type": "t_struct(Set)223_storage",
+                  "offset": 0,
+                  "slot": "0"
+                }
+              ],
+              "numberOfBytes": "64"
+            },
+            "t_uint16": {
+              "label": "uint16",
+              "numberOfBytes": "2"
+            },
+            "t_uint256": {
+              "label": "uint256",
+              "numberOfBytes": "32"
+            }
+          },
+          "layoutVersion": "1.2",
+          "flat": true,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.19"
+      },
+      "contracts/staking/IStaking.sol:IStaking": {
+        "src": "contracts/staking/IStaking.sol:4",
+        "inherit": [],
+        "libraries": [],
+        "methods": [
+          "stake(uint256,uint256)",
+          "withdraw(uint256)",
+          "calculateStakeEarnings(uint256)",
+          "getStake(uint256)",
+          "getStakes(address,uint256,uint256)",
+          "getStakeIds(address)",
+          "isStakeExists(uint256)",
+          "calculateTotalEarnings(address)"
+        ],
+        "linkReferences": [],
+        "errors": [],
+        "layout": {
+          "storage": [],
+          "types": {},
+          "layoutVersion": "1.2",
+          "flat": false,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.19"
+      },
+      "contracts/staking/Staking.sol:Staking": {
+        "src": "contracts/staking/Staking.sol:12",
+        "version": {
+          "withMetadata": "3b9498aa0ad0bf4354d90e582ba45fd188b5e529e73e6322747216050dd61637",
+          "withoutMetadata": "e292fab298976683127f1d8879eae65429f5230450797ae39bf1509c393e7f90",
+          "linkedWithoutMetadata": "e292fab298976683127f1d8879eae65429f5230450797ae39bf1509c393e7f90"
+        },
+        "inherit": [
+          "@openzeppelin/contracts/utils/Context.sol:Context",
+          "contracts/staking/IStaking.sol:IStaking"
+        ],
+        "libraries": [
+          "@openzeppelin/contracts/utils/structs/EnumerableSet.sol:EnumerableSet",
+          "contracts/library/Constants.sol:Constants"
+        ],
+        "methods": [
+          "(address)",
+          "stake(uint256,uint256)",
+          "withdraw(uint256)",
+          "getStake(uint256)",
+          "calculateStakeEarnings(uint256)",
+          "getStakes(address,uint256,uint256)",
+          "getStakeIds(address)",
+          "calculateTotalEarnings(address)",
+          "isStakeExists(uint256)"
+        ],
+        "linkReferences": [],
+        "errors": [
+          {
+            "kind": "constructor",
+            "contract": "Staking",
+            "src": "contracts/staking/Staking.sol:62"
+          }
+        ],
+        "layout": {
+          "storage": [
+            {
+              "label": "_stakingToken",
+              "offset": 0,
+              "slot": "0",
+              "type": "t_contract(IERC20)190",
+              "contract": "Staking",
+              "src": "contracts/staking/Staking.sol:18"
+            },
+            {
+              "label": "_stakingManagement",
+              "offset": 0,
+              "slot": "1",
+              "type": "t_contract(IStakingManagement)995",
+              "contract": "Staking",
+              "src": "contracts/staking/Staking.sol:23"
+            },
+            {
+              "label": "_userStakes",
+              "offset": 0,
+              "slot": "2",
+              "type": "t_mapping(t_address,t_struct(UintSet)695_storage)",
+              "contract": "Staking",
+              "src": "contracts/staking/Staking.sol:28"
+            },
+            {
+              "label": "_stakes",
+              "offset": 0,
+              "slot": "3",
+              "type": "t_mapping(t_uint256,t_struct(Stake)1528_storage)",
+              "contract": "Staking",
+              "src": "contracts/staking/Staking.sol:33"
+            },
+            {
+              "label": "_allStakeIds",
+              "offset": 0,
+              "slot": "4",
+              "type": "t_struct(UintSet)695_storage",
+              "contract": "Staking",
+              "src": "contracts/staking/Staking.sol:38"
+            }
+          ],
+          "types": {
+            "t_address": {
+              "label": "address",
+              "numberOfBytes": "20"
+            },
+            "t_array(t_bytes32)dyn_storage": {
+              "label": "bytes32[]",
+              "numberOfBytes": "32"
+            },
+            "t_bool": {
+              "label": "bool",
+              "numberOfBytes": "1"
+            },
+            "t_bytes32": {
+              "label": "bytes32",
+              "numberOfBytes": "32"
+            },
+            "t_contract(IERC20)190": {
+              "label": "contract IERC20",
+              "numberOfBytes": "20"
+            },
+            "t_contract(IStakingManagement)995": {
+              "label": "contract IStakingManagement",
+              "numberOfBytes": "20"
+            },
+            "t_mapping(t_address,t_struct(UintSet)695_storage)": {
+              "label": "mapping(address => struct EnumerableSet.UintSet)",
+              "numberOfBytes": "32"
+            },
+            "t_mapping(t_bytes32,t_uint256)": {
+              "label": "mapping(bytes32 => uint256)",
+              "numberOfBytes": "32"
+            },
+            "t_mapping(t_uint256,t_struct(Stake)1528_storage)": {
+              "label": "mapping(uint256 => struct IStaking.Stake)",
+              "numberOfBytes": "32"
+            },
+            "t_struct(Set)223_storage": {
+              "label": "struct EnumerableSet.Set",
+              "members": [
+                {
+                  "label": "_values",
+                  "type": "t_array(t_bytes32)dyn_storage",
+                  "offset": 0,
+                  "slot": "0"
+                },
+                {
+                  "label": "_indexes",
+                  "type": "t_mapping(t_bytes32,t_uint256)",
+                  "offset": 0,
+                  "slot": "1"
+                }
+              ],
+              "numberOfBytes": "64"
+            },
+            "t_struct(Stake)1528_storage": {
+              "label": "struct IStaking.Stake",
+              "members": [
+                {
+                  "label": "staker",
+                  "type": "t_address",
+                  "offset": 0,
+                  "slot": "0"
+                },
+                {
+                  "label": "amount",
+                  "type": "t_uint256",
+                  "offset": 0,
+                  "slot": "1"
+                },
+                {
+                  "label": "stakingPlanId",
+                  "type": "t_uint256",
+                  "offset": 0,
+                  "slot": "2"
+                },
+                {
+                  "label": "startTimestamp",
+                  "type": "t_uint256",
+                  "offset": 0,
+                  "slot": "3"
+                },
+                {
+                  "label": "endTimestamp",
+                  "type": "t_uint256",
+                  "offset": 0,
+                  "slot": "4"
+                },
+                {
+                  "label": "earningsInTokens",
+                  "type": "t_uint256",
+                  "offset": 0,
+                  "slot": "5"
+                },
+                {
+                  "label": "earningsPercentage",
+                  "type": "t_uint256",
+                  "offset": 0,
+                  "slot": "6"
+                },
+                {
+                  "label": "earlyWithdrawal",
+                  "type": "t_bool",
+                  "offset": 0,
+                  "slot": "7"
+                },
+                {
+                  "label": "withdrawn",
+                  "type": "t_bool",
+                  "offset": 1,
+                  "slot": "7"
+                }
+              ],
+              "numberOfBytes": "256"
+            },
+            "t_struct(UintSet)695_storage": {
+              "label": "struct EnumerableSet.UintSet",
+              "members": [
+                {
+                  "label": "_inner",
+                  "type": "t_struct(Set)223_storage",
+                  "offset": 0,
+                  "slot": "0"
+                }
+              ],
+              "numberOfBytes": "64"
+            },
+            "t_uint256": {
+              "label": "uint256",
+              "numberOfBytes": "32"
+            }
+          },
+          "layoutVersion": "1.2",
+          "flat": true,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.19"
+      }
+    },
+    {
       "@openzeppelin/contracts/token/ERC20/IERC20.sol:IERC20": {
         "src": "@openzeppelin/contracts/token/ERC20/IERC20.sol:9",
         "inherit": [],

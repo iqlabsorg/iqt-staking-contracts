@@ -56,14 +56,6 @@ contract Staking is IStaking, Context {
     }
 
     /**
-     * @dev Reverts if the withdrawal is not enabled.
-     */
-    modifier withdrawEnabled() {
-        if (!_stakingManagement.isWithdrawEnabled()) revert WithdrawalNotEnabled();
-        _;
-    }
-
-    /**
      * @dev Constructor.
      * @param stakingManagement Address of the staking management contract.
      */
@@ -81,14 +73,18 @@ contract Staking is IStaking, Context {
         uint256 stakeId = _allStakeIds.length();
         _userStakes[_msgSender()].add(stakeId);
         _allStakeIds.add(stakeId);
+
+        uint256 stakingPlanDuration = _stakingManagement.getStakingPlan(stakingPlan).duration;
+
         _stakes[stakeId] = Stake({
             staker: _msgSender(),
             amount: amount,
             stakingPlanId: stakingPlan,
             startTimestamp: block.timestamp,
-            endTimestamp: block.timestamp + Constants.SECONDS_IN_DAY,
+            endTimestamp: block.timestamp + stakingPlanDuration,
             earningsInTokens: 0,
             earningsPercentage: 0,
+            earlyWithdrawal: false,
             withdrawn: false
         });
 
@@ -102,20 +98,27 @@ contract Staking is IStaking, Context {
     /**
      * @inheritdoc IStaking
      */
-    function withdraw(
-        uint256 stakeId
-    ) external override onlyStakeOwner(stakeId) onlyExistingStake(stakeId) withdrawEnabled {
-        if (!_stakes[stakeId].withdrawn) revert StakeAlreadyWithdrawn(stakeId);
-        if (block.timestamp >= _stakes[stakeId].endTimestamp) revert StakeNotYetEnded(stakeId);
+    function withdraw(uint256 stakeId) external override onlyStakeOwner(stakeId) onlyExistingStake(stakeId) {
+        Stake storage stakeRecord = _stakes[stakeId];
+        uint256 currentTimestamp = block.timestamp;
 
-        (_stakes[stakeId].earningsInTokens, _stakes[stakeId].earningsPercentage) = calculateStakeEarnings(stakeId);
-        _stakes[stakeId].withdrawn = true;
-        _stakingToken.transfer(_msgSender(), _stakes[stakeId].amount + _stakes[stakeId].earningsInTokens);
+        if (stakeRecord.withdrawn) revert StakeAlreadyWithdrawn(stakeId);
+        if (currentTimestamp < stakeRecord.endTimestamp) {
+            if (!_stakingManagement.isWithdrawEnabled()) {
+                revert EarlyWithdrawalNotAllowed(currentTimestamp, stakeRecord.endTimestamp);
+            }
+            uint256 withdrawalAmount = stakeRecord.amount;
+            stakeRecord.earlyWithdrawal = true;
+            stakeRecord.withdrawn = true;
+            _stakingToken.transfer(_msgSender(), withdrawalAmount);
+        } else {
+            (stakeRecord.earningsInTokens, stakeRecord.earningsPercentage) = calculateStakeEarnings(stakeId);
+            stakeRecord.withdrawn = true;
+            _stakingToken.transfer(_msgSender(), stakeRecord.amount + stakeRecord.earningsInTokens);
+        }
 
         emit StakeWithdrawn(_msgSender(), stakeId);
-
         _userStakes[_msgSender()].remove(stakeId);
-        _allStakeIds.remove(stakeId);
     }
 
     /**

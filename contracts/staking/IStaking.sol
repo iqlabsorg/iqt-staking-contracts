@@ -11,7 +11,7 @@ interface IStaking {
     /**
      * @dev Reverts if the withdrawal is not enabled.
      */
-    error WithdrawalNotEnabled();
+    error EarlyWithdrawalNotAllowed(uint256 currentTimestamp, uint256 endTimestamp);
 
     /**
      * @dev Reverts if the stake does not exist.
@@ -53,6 +53,7 @@ interface IStaking {
      * @param endTimestamp Timestamp when the stake will end.
      * @param earningsInTokens Amount of tokens earned (calculated after withdraw).
      * @param earningsPercentage Percentage of tokens earned (calculated after withdraw).
+     * @param earlyWithdrawal Whether the stake was withdrawn before the end.
      * @param withdrawn Whether the stake has been withdrawn.
      */
     struct Stake {
@@ -63,6 +64,7 @@ interface IStaking {
         uint256 endTimestamp;
         uint256 earningsInTokens;
         uint256 earningsPercentage;
+        bool earlyWithdrawal;
         bool withdrawn;
     }
 
