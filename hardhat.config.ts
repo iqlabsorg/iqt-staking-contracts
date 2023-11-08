@@ -1,29 +1,18 @@
-/* eslint-disable multiline-ternary */
+import { HardhatUserConfig } from 'hardhat/config';
+import '@typechain/hardhat';
+import 'hardhat-deploy';
+import '@nomicfoundation/hardhat-chai-matchers';
+import '@nomicfoundation/hardhat-ethers';
+import '@nomicfoundation/hardhat-verify';
+import '@nomicfoundation/hardhat-toolbox';
 import * as dotenv from 'dotenv';
 
-import { HardhatUserConfig } from 'hardhat/config';
-import '@nomiclabs/hardhat-waffle';
-import '@nomiclabs/hardhat-ethers';
-import '@typechain/hardhat';
-import 'hardhat-gas-reporter';
-import 'hardhat-contract-sizer';
-import 'solidity-coverage';
-import 'hardhat-deploy';
-import '@nomiclabs/hardhat-etherscan';
-import '@openzeppelin/hardhat-upgrades';
-import '@iqprotocol/iq-space-protocol/tasks';
-// import "./test/assertions";
-import { IQSpaceV2SupportedChainNetworks } from '@iqprotocol/iq-space-sdk-js';
-
 const env = dotenv.config();
-const processError = (e: string): void =>
-  console.log(
-    `
-Cannot load tasks. Need to generate typechain types.
-This is the expected behaviour on first time setup.`,
-    `Missing type trace: ${e.toString()}`,
-  );
-import('./tasks').catch(processError);
+
+import './tasks/deploy-iqt-mock';
+import './tasks/deploy-batch-timelock';
+import './tasks/deploy-staking';
+import './tasks/deploy-staking-management';
 
 const DEPLOYMENT_PRIVATE_KEY = env.parsed?.DEPLOYMENT_PRIVATE_KEY;
 const ANKR_PROJECT_KEY = env.parsed?.ANKR_PROJECT_KEY;
@@ -47,20 +36,15 @@ const config: HardhatUserConfig = {
     deployer: 0,
   },
   networks: {
-    [IQSpaceV2SupportedChainNetworks.POLYGON_MAINNET]: {
-      url: `https://rpc.ankr.com/polygon/${ankrProjectKey}`,
-      accounts,
+    ethereum: {
+      url: `https://rpc.ankr.com/eth/${process.env.ANKR_PROJECT_KEY}`,
       gasPrice: 300_000000000,
       gasMultiplier: 2,
       timeout: 40000,
     },
-    [IQSpaceV2SupportedChainNetworks.POLYGON_MUMBAI_TESTNET]: {
-      url: `https://rpc.ankr.com/polygon_mumbai/${ankrProjectKey}`,
-      accounts,
-    },
-    bscTestnet: {
-      url: 'https://data-seed-prebsc-1-s1.binance.org:8545/',
-      accounts,
+    ethereumGoerli: {
+      url: `https://rpc.ankr.com/eth_goerli/${process.env.ANKR_PROJECT_KEY}`,
+      timeout: 40000,
     },
   },
   etherscan: {
@@ -75,6 +59,12 @@ const config: HardhatUserConfig = {
     enabled: process.env.REPORT_GAS !== undefined,
     currency: 'USD',
   },
+  paths: {
+    sources: './contracts',
+    tests: './test',
+    cache: './cache',
+    artifacts: './artifacts',
+  },
   external: {
     contracts: [
       {
@@ -85,7 +75,7 @@ const config: HardhatUserConfig = {
   },
   typechain: {
     outDir: 'typechain',
-    target: 'ethers-v5',
+    target: 'ethers-v6',
   },
 };
 
