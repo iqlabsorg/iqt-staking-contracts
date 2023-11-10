@@ -113,9 +113,10 @@ contract BatchTimelock is Ownable, ITerminateable, IBatchTimelock, IVestingPool 
         }
 
         Timelock storage lock = _timelocks[_msgSender()];
+        uint256 blockTimestamp = block.timestamp;
 
-        if (lock.isTerminated && block.timestamp >= lock.terminationFrom) {
-            revert TimelockIsTerminated(_msgSender(), lock.terminationFrom);
+        if (blockTimestamp < lock.timelockFrom + lock.cliffDuration) {
+            revert CliffPeriodNotEnded(blockTimestamp, lock.timelockFrom + lock.cliffDuration);
         }
 
         uint256 withdrawable = getClaimableBalance(_msgSender());
@@ -137,27 +138,38 @@ contract BatchTimelock is Ownable, ITerminateable, IBatchTimelock, IVestingPool 
      * @inheritdoc IBatchTimelock
      */
     function getClaimableBalance(address receiver) public view returns (uint256) {
-        uint256 blockTimestampNow = block.timestamp;
         Timelock storage lock = _timelocks[receiver];
         uint256 lockFromPlusCliff = lock.timelockFrom + lock.cliffDuration;
-
-        if (lock.isTerminated && blockTimestampNow >= lock.terminationFrom) {
-            return 0;
-        }
+        uint256 blockTimestampNow = block.timestamp;
 
         if (blockTimestampNow < lockFromPlusCliff) {
             return 0;
         }
 
-        if (blockTimestampNow >= lockFromPlusCliff + lock.vestingDuration) {
-            return lock.totalAmount - lock.releasedAmount;
+        uint256 vestedTime;
+        if (lock.isTerminated) {
+            vestedTime = lock.terminationFrom > lockFromPlusCliff
+                ? lock.terminationFrom - lockFromPlusCliff
+                : 0;
+        } else {
+            uint256 vestingEnd = lockFromPlusCliff + lock.vestingDuration;
+            vestedTime = blockTimestampNow < vestingEnd
+                ? blockTimestampNow - lockFromPlusCliff
+                : lock.vestingDuration;
+        }
+        uint256 vestedPortion = (lock.totalAmount * vestedTime) / lock.vestingDuration;
+
+        uint256 claimable = vestedPortion > lock.releasedAmount
+            ? vestedPortion - lock.releasedAmount
+            : 0;
+
+        if (lock.isTerminated && blockTimestampNow >= lock.terminationFrom) {
+            return claimable;
         }
 
-        uint256 timeIntoVesting = blockTimestampNow - lockFromPlusCliff;
-        uint256 vestedPortion = (lock.totalAmount * timeIntoVesting) / lock.vestingDuration;
-
-        return vestedPortion - lock.releasedAmount;
+        return claimable;
     }
+
 
     /**
      * @inheritdoc IBatchTimelock

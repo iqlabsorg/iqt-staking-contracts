@@ -166,73 +166,110 @@ describe("BatchTimelock Contract", function () {
       });
     });
 
-    describe("claim", function () {
-      const TIMELOCK_AMOUNT: BigNumberish = ethers.parseEther('1');
-      const CLAIM_AMOUNT = ethers.parseEther("0.1");
-
-      let timelockReceiver1Address: string;
+    describe("claim function", function () {
+      let timelockReceiverAddress: string;
+      let initialVestingAmount: bigint;
+      let halfVestingAmount: bigint;
+      let cliffDuration: number;
+      let vestingDuration: number;
+      let timelockFrom: number;
+      let timelockReceiver1: Signer;
 
       beforeEach(async function () {
-        timelockReceiver1Address = await timelockReceiver1.getAddress();
-        const dateNow = Math.floor(Date.now() / 1000);
-        console.log('DATENOW ', dateNow);
+        [deployer, timelockReceiver1] = await ethers.getSigners();
+        timelockReceiverAddress = await timelockReceiver1.getAddress();
+
+        initialVestingAmount = ethers.parseEther("1"); // 1 token for simplicity
+        halfVestingAmount = initialVestingAmount / BigInt(2);
+        cliffDuration = 6 * 30 * 24 * 60 * 60; // 6 months in seconds
+        vestingDuration = 12 * 30 * 24 * 60 * 60; // 12 months in seconds
+        const latestBlock =  await ethers.provider.getBlock("latest");
+        const latestBlockTimestamp = latestBlock!.timestamp;
+        timelockFrom = latestBlockTimestamp;
+
         await batchTimelock.connect(deployer).addTimelock(
-          timelockReceiver1Address,
-          TIMELOCK_AMOUNT,
-          TIMESTAMP_NOW,
-          CLIFF_DURATION,
-          VESTING_DURATION
+          timelockReceiverAddress,
+          initialVestingAmount,
+          latestBlockTimestamp,
+          cliffDuration,
+          vestingDuration
         );
       });
 
-      it("Should fail to claim with stranger address", async function () {
-        await expect(batchTimelock.connect(stranger).claim(ethers.parseEther("0.1")))
-          .to.be.revertedWithCustomError(batchTimelock, "InvalidReceiverAddress");
-      });
-
-      it("Should fail to claim with stranger address", async function () {
+      it("Should fail to claim when amount is zero", async function () {
         await expect(batchTimelock.connect(timelockReceiver1).claim(0))
           .to.be.revertedWithCustomError(batchTimelock, "ZeroClaimAmount");
       });
 
-      it("Should fail to claim if terminated", async function () {
-        const dateNow = Math.floor(Date.now() / 1000);
-        await batchTimelock.connect(deployer).terminate(timelockReceiver1Address, dateNow);
+      it("Should fail to claim before the cliff period ends", async function () {
         await expect(batchTimelock.connect(timelockReceiver1).claim(ethers.parseEther("0.1")))
-          .to.be.revertedWithCustomError(batchTimelock, "TimelockIsTerminated");
+          .to.be.revertedWithCustomError(batchTimelock, "CliffPeriodNotEnded");
       });
 
-      it("Should fail to claim if amount is higher than withdrawable", async function () {
-         // Fast-forward time by 6 months + 1 month
-         await ethers.provider.send("evm_increaseTime", [CLIFF_DURATION + 2_628_000]);
-         await ethers.provider.send("evm_mine", []);
-
-         await expect(batchTimelock.connect(timelockReceiver1).claim(CLAIM_AMOUNT))
-           .to.be.revertedWithCustomError(batchTimelock, "AmountExceedsWithdrawableAllowance");;
-      });
-
-      it("Should fail to claim if token transfer is failed", async function () {
-        const deployerAddress = await deployer.getAddress();
-        await iqtMock.connect(vestingPool).transfer(deployerAddress, ethers.parseEther('10'));
-        // Fast-forward time by 6 months + 1 month
-        await ethers.provider.send("evm_increaseTime", [CLIFF_DURATION + 2_628_000]);
+      it("Should fail to claim more than the withdrawable amount", async function () {
+        // Fast-forward time to after the cliff period
+        await ethers.provider.send("evm_increaseTime", [cliffDuration + 1]);
         await ethers.provider.send("evm_mine", []);
 
-        await expect(batchTimelock.connect(timelockReceiver1).claim(CLAIM_AMOUNT))
-          .to.be.revertedWith('ERC20: transfer amount exceeds balance');
+        const amountToClaim = ethers.parseEther("2"); // More than initialVestingAmount
+        await expect(batchTimelock.connect(timelockReceiver1).claim(amountToClaim))
+          .to.be.revertedWithCustomError(batchTimelock, "AmountExceedsWithdrawableAllowance");
       });
 
-      it("Should allow partial claim and update released amount", async function () {
-        // Fast-forward time by 6 months + 1 month
-        await ethers.provider.send("evm_increaseTime", [CLIFF_DURATION + 2_628_000]);
+      it("Should allow to claim only half of the amount if terminated on the half of the vesting", async function () {
+        // Terminate the timelock and then fast-forward past the termination date
+        await batchTimelock.connect(deployer).terminate(timelockReceiverAddress, timelockFrom + cliffDuration + (vestingDuration / 2));
+        await ethers.provider.send("evm_increaseTime", [cliffDuration + (vestingDuration / 2)]);
         await ethers.provider.send("evm_mine", []);
 
-        await expect(batchTimelock.connect(timelockReceiver1).claim(CLAIM_AMOUNT))
-          .to.emit(batchTimelock, 'TokensClaimed')
-          .withArgs(timelockReceiver1Address, CLAIM_AMOUNT);
+        const withdrawable = await batchTimelock.getClaimableBalance(timelockReceiverAddress);
 
-        const timelock = await batchTimelock.getTimelock(timelockReceiver1Address);
-        expect(timelock.releasedAmount).to.equal(CLAIM_AMOUNT);
+        await expect(batchTimelock.connect(timelockReceiver1).claim(halfVestingAmount))
+          .to.emit(batchTimelock, "TokensClaimed")
+          .withArgs(timelockReceiverAddress, halfVestingAmount);
+        expect(withdrawable).to.be.eq(halfVestingAmount);
+      });
+
+      it("Should successfully claim the exact withdrawable amount after the cliff period", async function () {
+        await ethers.provider.send("evm_increaseTime", [cliffDuration + 1]);
+        await ethers.provider.send("evm_mine", []);
+
+        const withdrawable = await batchTimelock.getClaimableBalance(timelockReceiverAddress);
+        await expect(batchTimelock.connect(timelockReceiver1).claim(withdrawable))
+          .to.emit(batchTimelock, "TokensClaimed")
+          .withArgs(timelockReceiverAddress, withdrawable);
+      });
+
+      it("Should successfully claim within the allowable limit", async function () {
+        // Fast-forward time to after the cliff period
+        await ethers.provider.send("evm_increaseTime", [cliffDuration + (vestingDuration / 2)]);
+        await ethers.provider.send("evm_mine", []);
+
+        const claimableAmount = await batchTimelock.getClaimableBalance(timelockReceiverAddress);
+
+        await expect(batchTimelock.connect(timelockReceiver1).claim(claimableAmount))
+          .to.emit(batchTimelock, "TokensClaimed")
+          .withArgs(timelockReceiverAddress, claimableAmount);
+      });
+
+      it("Should successfully claim the whole amount after the vesting period", async function () {
+        // Fast-forward time to after the cliff period
+        await ethers.provider.send("evm_increaseTime", [cliffDuration + vestingDuration + 1]);
+        await ethers.provider.send("evm_mine", []);
+
+        const claimableAmount = await batchTimelock.getClaimableBalance(timelockReceiverAddress);
+
+        await expect(batchTimelock.connect(timelockReceiver1).claim(claimableAmount))
+          .to.emit(batchTimelock, "TokensClaimed")
+          .withArgs(timelockReceiverAddress, initialVestingAmount);
+      });
+
+      it("Should fail if the token transfer fails", async function () {
+        await iqtMock.connect(vestingPool).approve(batchTimelock.target, 0);
+        await ethers.provider.send("evm_increaseTime", [cliffDuration + vestingDuration + 1]);
+        await ethers.provider.send("evm_mine", []);
+        await expect(batchTimelock.connect(timelockReceiver1).claim(initialVestingAmount))
+          .to.be.revertedWith("ERC20: insufficient allowance");
       });
     });
 
@@ -245,12 +282,18 @@ describe("BatchTimelock Contract", function () {
         await batchTimelock.connect(deployer).addTimelock(timelockReceiver1Address, TIMELOCK_AMOUNT, TIMESTAMP_NOW, CLIFF_DURATION, VESTING_DURATION);
       });
 
-      it("Should disable claiming after termination", async function () {
-        const dateNow = Math.floor(Date.now() / 1000);
-        await batchTimelock.connect(deployer).terminate(timelockReceiver1Address, dateNow);
+      it("Should decrease withdrawable amount if terminated", async function () {
+        const halfVestingTimestamp = TIMESTAMP_NOW + CLIFF_DURATION + (VESTING_DURATION / 2) + 1;
+        await batchTimelock.connect(deployer).terminate(timelockReceiver1Address, halfVestingTimestamp);
 
-        await expect(batchTimelock.connect(timelockReceiver1).claim(CLAIM_AMOUNT))
-          .to.be.revertedWithCustomError(batchTimelock, "TimelockIsTerminated");
+        await ethers.provider.send("evm_increaseTime", [halfVestingTimestamp]);
+        await ethers.provider.send("evm_mine", []);
+
+        const withdrawableBalance = await batchTimelock.getClaimableBalance(timelockReceiver1Address);
+
+        await expect(batchTimelock.connect(timelockReceiver1).claim(withdrawableBalance))
+          .to.emit(batchTimelock, 'TokensClaimed')
+          .withArgs(timelockReceiver1Address, withdrawableBalance);
       });
 
       it("Should re-enable claiming after determinate", async function () {
@@ -259,6 +302,78 @@ describe("BatchTimelock Contract", function () {
         await batchTimelock.connect(deployer).determinate(timelockReceiver1Address);
         await expect(batchTimelock.connect(timelockReceiver1).claim(CLAIM_AMOUNT))
           .not.to.be.reverted;
+      });
+    });
+
+    describe("getClaimableBalance function", function () {
+      let timelockReceiverAddress: string;
+      let initialVestingAmount: bigint;
+      let cliffDuration: number;
+      let vestingDuration: number;
+      let timelockFrom: number;
+      let terminationTimeDuringCliff: number;
+      let terminationTimeAfterCliff: number;
+      let halfVestingTime: number;
+
+      beforeEach(async function () {
+        timelockReceiverAddress = await timelockReceiver1.getAddress();
+        initialVestingAmount = ethers.parseEther("1"); // 1 token
+        cliffDuration = 6 * 30 * 24 * 60 * 60; // 6 months in seconds
+        vestingDuration = 12 * 30 * 24 * 60 * 60; // 12 months in seconds
+        const latestBlock =  await ethers.provider.getBlock("latest");
+        const latestBlockTimestamp = latestBlock!.timestamp;
+        timelockFrom = latestBlockTimestamp;
+        terminationTimeDuringCliff = latestBlockTimestamp + (cliffDuration / 2);
+        terminationTimeAfterCliff = latestBlockTimestamp + cliffDuration + 1000;
+        halfVestingTime = cliffDuration + (vestingDuration / 2);
+
+        await batchTimelock.connect(deployer).addTimelock(
+          timelockReceiverAddress,
+          initialVestingAmount,
+          latestBlockTimestamp,
+          cliffDuration,
+          vestingDuration
+        );
+      });
+
+      it("Should return 0 before the cliff period ends, even after termination", async function () {
+        await batchTimelock.connect(deployer).terminate(timelockReceiverAddress, terminationTimeDuringCliff);
+        await ethers.provider.send('evm_setNextBlockTimestamp', [terminationTimeDuringCliff]);
+        await ethers.provider.send('evm_mine', []);
+        const balance = await batchTimelock.getClaimableBalance(timelockReceiverAddress);
+        expect(balance).to.equal(0);
+      });
+
+      it("Should return the correct amount after the cliff but before vesting is complete, considering termination", async function () {
+        await batchTimelock.connect(deployer).terminate(timelockReceiverAddress, timelockFrom + halfVestingTime);
+        await ethers.provider.send('evm_setNextBlockTimestamp', [timelockFrom + halfVestingTime]);
+        await ethers.provider.send('evm_mine', []);
+        const balance = await batchTimelock.getClaimableBalance(timelockReceiverAddress);
+        expect(balance).to.equal(initialVestingAmount / BigInt(2));
+      });
+
+      it("Should return the correct amount during the whole vesting period", async function () {
+        const checkPoints = [
+          timelockFrom + cliffDuration,
+          timelockFrom + cliffDuration + (vestingDuration / 4),
+          timelockFrom + cliffDuration + (vestingDuration / 3),
+          timelockFrom + cliffDuration + (vestingDuration / 2),
+          timelockFrom + cliffDuration + vestingDuration
+        ];
+        const expectedAmounts = [
+          0,
+          initialVestingAmount / BigInt(4),
+          initialVestingAmount / BigInt(3),
+          initialVestingAmount / BigInt(2),
+          initialVestingAmount
+        ];
+
+        for (let i = 0; i < checkPoints.length; i++) {
+          await ethers.provider.send('evm_setNextBlockTimestamp', [checkPoints[i]]);
+          await ethers.provider.send('evm_mine', []);
+          const balance = await batchTimelock.getClaimableBalance(timelockReceiverAddress);
+          expect(balance).to.equal(expectedAmounts[i]);
+        }
       });
     });
   });

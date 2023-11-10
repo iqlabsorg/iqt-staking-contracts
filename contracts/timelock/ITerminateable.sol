@@ -10,12 +10,6 @@ interface ITerminateable {
     error TerminationTimeMustBeAfterLockStart(uint256 terminationFrom, uint256 lockFrom);
 
     /**
-     * @notice Reverts if timelock is terminated
-     * @param terminationFrom Timestamp from which tokens will be terminated.
-    */
-    error TimelockIsTerminated(address receiver, uint256 terminationFrom);
-
-    /**
      * @notice Emits when timelock is terminated.
      * @param receiver Address of the receiver.
      * @param terminationFrom Timestamp from which tokens will be terminated.
