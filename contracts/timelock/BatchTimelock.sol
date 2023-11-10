@@ -112,13 +112,13 @@ contract BatchTimelock is Ownable, ITerminateable, IBatchTimelock, IVestingPool 
             revert ZeroClaimAmount();
         }
 
-        Timelock storage lock = _timelocks[msg.sender];
+        Timelock storage lock = _timelocks[_msgSender()];
 
         if (lock.isTerminated && block.timestamp >= lock.terminationFrom) {
-            revert TimelockIsTerminated(msg.sender, lock.terminationFrom);
+            revert TimelockIsTerminated(_msgSender(), lock.terminationFrom);
         }
 
-        uint256 withdrawable = getClaimableBalance(msg.sender);
+        uint256 withdrawable = getClaimableBalance(_msgSender());
 
         if (amount > withdrawable) {
             revert AmountExceedsWithdrawableAllowance(amount, withdrawable);
@@ -126,11 +126,11 @@ contract BatchTimelock is Ownable, ITerminateable, IBatchTimelock, IVestingPool 
 
         lock.releasedAmount += amount;
 
-        if (!_token.transferFrom(_vestingPool, msg.sender, amount)) {
-            revert TokenTransferFailed(_vestingPool, msg.sender, amount);
+        if (!_token.transferFrom(_vestingPool, _msgSender(), amount)) {
+            revert TokenTransferFailed(_vestingPool, _msgSender(), amount);
         }
 
-        emit TokensClaimed(msg.sender, amount);
+        emit TokensClaimed(_msgSender(), amount);
     }
 
     /**

@@ -55,9 +55,9 @@ contract StakingManagement is IStakingManagement, Ownable {
      */
     function addStakingPlan(uint256 duration, uint16 apy) external override onlyOwner returns (uint256) {
         if (duration == 0) revert DurationMustBeGreaterThanZero();
-        if (apy == 0 && apy > Constants.MAX_APY) revert APYMustBeWithinRange();
+        if (apy == 0 || apy > Constants.MAX_APY) revert APYMustBeWithinRange();
 
-        uint256 planId = _stakingPlanIds.length();
+        uint256 planId = _stakingPlanIds.length() + 1;
         _stakingPlans[planId] = StakingPlan({duration: duration, apy: apy});
         _stakingPlanIds.add(planId);
 
@@ -71,7 +71,7 @@ contract StakingManagement is IStakingManagement, Ownable {
         _checkStakingPlanExists(planId);
 
         if (duration == 0) revert DurationMustBeGreaterThanZero();
-        if (apy == 0 && apy > Constants.MAX_APY) revert APYMustBeWithinRange();
+        if (apy == 0 || apy > Constants.MAX_APY) revert APYMustBeWithinRange();
 
         _stakingPlans[planId] = StakingPlan({duration: duration, apy: apy});
     }
@@ -166,6 +166,13 @@ contract StakingManagement is IStakingManagement, Ownable {
         }
 
         return plans;
+    }
+
+    /**
+     * @inheritdoc IStakingManagement
+     */
+    function getStakingPlansAmount() external view override returns (uint256) {
+        return _stakingPlanIds.length();
     }
 
     /**

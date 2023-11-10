@@ -32,6 +32,25 @@ interface IStaking {
     error StakeNotYetEnded(uint256 stakeId);
 
     /**
+     * @dev Reverts if the stake amount is less than the minimum stake.
+     * @param amount Amount of tokens to stake.
+    */
+    error AmountIsLessThanMinimumStake(uint256 amount);
+
+    /**
+     * @dev Reverts if the stake amount is greater than the maximum stake.
+     * @param amount Amount of tokens to stake.
+    */
+    error AmountIsGreaterThanMaximumStake(uint256 amount);
+
+    /**
+     * @dev Reverts if the staking plan does not exist.
+     * @param requiredAllowance Amount of tokens required to be allowed.
+     * @param currentAllowance Amount of tokens currently allowed.
+     */
+    error InsufficientAllowance(uint256 requiredAllowance, uint256 currentAllowance);
+
+    /**
      * @dev Emitted when a stake is added.
      * @param staker Address of the staker.
      * @param stakeId Unique ID of the stake.
@@ -100,20 +119,67 @@ interface IStaking {
     function getStake(uint256 stakeId) external view returns (Stake memory);
 
     /**
-     * @dev Get all stakes data.
+     * @dev Get all staker stakes data.
      * @param staker Address of the staker.
      * @param offset Offset of the stakes.
      * @param limit Limit of the stakes.
-     * @return Array of stakes.
+     * @return Array of staker stakes.
      */
     function getStakes(address staker, uint256 offset, uint256 limit) external view returns (Stake[] memory);
 
     /**
      * @dev Get all stakes data.
-     * @param staker Address of the staker.
+     * @param offset Offset of the stakes.
+     * @param limit Limit of the stakes.
      * @return Array of stakes.
      */
+    function getAllStakes(uint256 offset, uint256 limit) external view returns (Stake[] memory);
+
+    /**
+     * @dev Get the amount of staker stakes amount.
+     * @param staker Address of the staker.
+     * @return Amount of staker stakes staked.
+     */
+    function getStakesCount(address staker) external view returns (uint256);
+
+    /**
+     * @dev Get the amount of stakes.
+     * @return Amount of all stakes.
+     */
+    function getAllStakesCount() external view returns (uint256);
+
+    /**
+     * @dev Get all staker stakes ids.
+     * @param staker Address of the staker.
+     * @return Array of paginated staker stake ids.
+     */
     function getStakeIds(address staker) external view returns (uint256[] memory);
+
+    /**
+     * @dev Get all stakes ids.
+     * @return Array of paginated stake ids.
+     */
+    function getAllStakeIds() external view returns (uint256[] memory);
+
+    /**
+     * @dev Get the total amount of tokens staked by the staker.
+     * @param staker Address of the staker.
+     * @return Total amount of tokens staked by the staker.
+     */
+    function getStakedAmount(address staker) external view returns (uint256);
+
+    /**
+     * @dev Get the total amount of tokens staked.
+     * @return Total amount of tokens staked.
+     */
+    function getTotalStaked() external view returns (uint256);
+
+    /**
+     * @dev Calculate the total earnings in tokens and percentages.
+     */
+    function calculateTotalEarnings(
+        address staker
+    ) external view returns (uint256 totalEarningsInTokens, uint16 totalEarningsPercentage);
 
     /**
      * @dev Returns `true` if a stake exists.
@@ -122,9 +188,17 @@ interface IStaking {
     function isStakeExists(uint256 stakeId) external view returns (bool);
 
     /**
-     * @dev Calculate the total earnings in tokens and percentages.
-     */
-    function calculateTotalEarnings(
-        address staker
-    ) external view returns (uint256 totalEarningsInTokens, uint16 totalEarningsPercentage);
+     * @dev Returns the address of the staking management contract.
+    */
+    function getStakingManagement() external view returns (address);
+
+    /**
+     * @dev Returns the address of the staking token.
+    */
+    function getStakingToken() external view returns (address);
+
+    /**
+     * @dev Returns the address of the staking pool.
+    */
+    function getStakingPool() external view returns (address);
 }

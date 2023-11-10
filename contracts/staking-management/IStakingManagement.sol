@@ -133,6 +133,11 @@ interface IStakingManagement {
     function getStakingPlans(uint256 offset, uint256 limit) external view returns (StakingPlan[] memory);
 
     /**
+     * @dev Get amount of staking plans.
+     */
+    function getStakingPlansAmount() external view returns (uint256);
+
+    /**
      * @dev Check if withdrawals are enabled.
      */
     function isWithdrawEnabled() external view returns (bool);
