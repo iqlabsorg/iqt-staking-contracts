@@ -1,7 +1,11 @@
 import { expect } from "chai";
 import { ethers, run } from "hardhat";
-import { BigNumberish, Signer } from "ethers";
+import { BigNumberish, Signer, id } from "ethers";
 import { BatchTimelock, IQTMock } from "../typechain";
+
+export const solidityIdBytes32 = (string: string): string => {
+  return id(string);
+};
 
 describe("BatchTimelock Contract", function () {
   let deployer: Signer;
@@ -10,10 +14,13 @@ describe("BatchTimelock Contract", function () {
   let timelockReceiver1: Signer;
   let timelockReceiver2: Signer;
   let timelockReceiver3: Signer;
+  let timelockReceiver4: Signer;
   let iqtMock: IQTMock;
   let batchTimelock: BatchTimelock;
 
   const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+  const TERMINATION_ADMIN_ROLE = solidityIdBytes32("TERMINATION_ADMIN");
+  const TIMELOCK_CREATOR_ROLE = solidityIdBytes32("TIMELOCK_CREATOR");
 
   beforeEach(async function () {
     const accounts = await ethers.getSigners();
@@ -23,6 +30,7 @@ describe("BatchTimelock Contract", function () {
     timelockReceiver1 = accounts[3];
     timelockReceiver2 = accounts[4];
     timelockReceiver3 = accounts[5];
+    timelockReceiver4 = accounts[6];
 
     const deployerAddress = await deployer.getAddress();
     const vestingPoolAddress = await vestingPool.getAddress();
@@ -41,8 +49,12 @@ describe("BatchTimelock Contract", function () {
       expect(await batchTimelock.getTokenAddress()).to.equal(iqtMock.target);
     });
 
-    it("Should set the deployer as the owner", async function () {
-      expect(await batchTimelock.owner()).to.equal(await deployer.getAddress());
+    it("Should set the roles for deployer", async function () {
+      const deployerAddress = await deployer.getAddress();
+      const defaultAdminRole = await batchTimelock.DEFAULT_ADMIN_ROLE();
+      expect(await batchTimelock.hasRole(defaultAdminRole, deployerAddress)).to.equal(true);
+      expect(await batchTimelock.hasRole(TERMINATION_ADMIN_ROLE, deployerAddress)).to.equal(true);
+      expect(await batchTimelock.hasRole(TIMELOCK_CREATOR_ROLE, deployerAddress)).to.equal(true);
     });
   });
 
@@ -53,12 +65,14 @@ describe("BatchTimelock Contract", function () {
     const TIMESTAMP_NOW = Math.floor(Date.now() / 1000);
 
     let timelockReceiver1Address: string;
-    let timeLockReceiver2Address: string;
+    let timelockReceiver2Address: string;
+    let timelockReceiver3Address: string;
+    let timelockReceiver4Address: string;
 
     describe("addTimelock", function () {
       beforeEach(async function () {
         timelockReceiver1Address = await timelockReceiver1.getAddress();
-        timeLockReceiver2Address = await timelockReceiver2.getAddress();
+        timelockReceiver2Address = await timelockReceiver2.getAddress();
         await batchTimelock.connect(deployer).addTimelock(timelockReceiver1Address, TIMELOCK_AMOUNT, TIMESTAMP_NOW, CLIFF_DURATION, VESTING_DURATION);
       });
 
@@ -80,6 +94,11 @@ describe("BatchTimelock Contract", function () {
           expect(timelock.terminationFrom).to.equal(0);
           expect(timelock.isTerminated).to.equal(false);
         });
+      });
+
+      it('should fail to add a timelock if the caller is not a timelock creator', async function () {
+        await expect(batchTimelock.connect(stranger).addTimelock(timelockReceiver2Address, TIMELOCK_AMOUNT, TIMESTAMP_NOW, CLIFF_DURATION, VESTING_DURATION))
+          .to.be.revertedWithCustomError(batchTimelock, `CallerIsNotATimelockCreator`);
       });
 
       it("Should fail to add a timelock for a zero address", async function () {
@@ -140,6 +159,11 @@ describe("BatchTimelock Contract", function () {
         expect(logs[2].args.timelockFrom).to.equal(TIMESTAMP_NOW);
         expect(logs[2].args.cliffDuration).to.equal(CLIFF_DURATION);
         expect(logs[2].args.vestingDuration).to.equal(VESTING_DURATION);
+      });
+
+      it("Should fail to add a batch if the caller is not a timelock creator", async function () {
+        await expect(batchTimelock.connect(stranger).addTimelockBatch(batchOfReceivers))
+          .to.be.revertedWithCustomError(batchTimelock, `CallerIsNotATimelockCreator`);
       });
 
       it("Should fail to add a batch with a zero address", async function () {
@@ -273,38 +297,6 @@ describe("BatchTimelock Contract", function () {
       });
     });
 
-    describe("terminate and determinate functions", function () {
-      const CLAIM_AMOUNT = ethers.parseEther("0.1");
-      let timelockReceiver1Address: string;
-
-      beforeEach(async function () {
-        timelockReceiver1Address = await timelockReceiver1.getAddress();
-        await batchTimelock.connect(deployer).addTimelock(timelockReceiver1Address, TIMELOCK_AMOUNT, TIMESTAMP_NOW, CLIFF_DURATION, VESTING_DURATION);
-      });
-
-      it("Should decrease withdrawable amount if terminated", async function () {
-        const halfVestingTimestamp = TIMESTAMP_NOW + CLIFF_DURATION + (VESTING_DURATION / 2) + 1;
-        await batchTimelock.connect(deployer).terminate(timelockReceiver1Address, halfVestingTimestamp);
-
-        await ethers.provider.send("evm_increaseTime", [halfVestingTimestamp]);
-        await ethers.provider.send("evm_mine", []);
-
-        const withdrawableBalance = await batchTimelock.getClaimableBalance(timelockReceiver1Address);
-
-        await expect(batchTimelock.connect(timelockReceiver1).claim(withdrawableBalance))
-          .to.emit(batchTimelock, 'TokensClaimed')
-          .withArgs(timelockReceiver1Address, withdrawableBalance);
-      });
-
-      it("Should re-enable claiming after determinate", async function () {
-        const dateNow = Math.floor(Date.now() / 1000);
-        await batchTimelock.connect(deployer).terminate(timelockReceiver1Address, dateNow);
-        await batchTimelock.connect(deployer).determinate(timelockReceiver1Address);
-        await expect(batchTimelock.connect(timelockReceiver1).claim(CLAIM_AMOUNT))
-          .not.to.be.reverted;
-      });
-    });
-
     describe("getClaimableBalance function", function () {
       let timelockReceiverAddress: string;
       let initialVestingAmount: bigint;
@@ -374,6 +366,154 @@ describe("BatchTimelock Contract", function () {
           const balance = await batchTimelock.getClaimableBalance(timelockReceiverAddress);
           expect(balance).to.equal(expectedAmounts[i]);
         }
+      });
+    });
+
+    describe("getTimelock function", function () {
+      beforeEach(async function () {
+        timelockReceiver1Address = await timelockReceiver1.getAddress();
+        await batchTimelock.connect(deployer).addTimelock(timelockReceiver1Address, TIMELOCK_AMOUNT, TIMESTAMP_NOW, CLIFF_DURATION, VESTING_DURATION);
+      });
+
+      it("Should return the correct timelock", async function () {
+        const timelock = await batchTimelock.getTimelock(timelockReceiver1Address);
+        expect(timelock.receiver).to.equal(timelockReceiver1Address);
+        expect(timelock.totalAmount).to.equal(TIMELOCK_AMOUNT);
+        expect(timelock.cliffDuration).to.equal(CLIFF_DURATION);
+        expect(timelock.vestingDuration).to.equal(VESTING_DURATION);
+        expect(timelock.terminationFrom).to.equal(0);
+        expect(timelock.isTerminated).to.equal(false);
+      });
+    });
+
+    describe("getTimelockReceivers", function () {
+      const OFFSET = 0;
+
+      beforeEach(async function() {
+        timelockReceiver1Address = await timelockReceiver1.getAddress();
+        timelockReceiver2Address = await timelockReceiver2.getAddress();
+        timelockReceiver3Address = await timelockReceiver3.getAddress();
+        timelockReceiver4Address = await timelockReceiver4.getAddress();
+        await batchTimelock.connect(deployer).addTimelock(timelockReceiver1Address, TIMELOCK_AMOUNT, TIMESTAMP_NOW, CLIFF_DURATION, VESTING_DURATION);
+        await batchTimelock.connect(deployer).addTimelock(timelockReceiver2Address, TIMELOCK_AMOUNT, TIMESTAMP_NOW, CLIFF_DURATION, VESTING_DURATION);
+        await batchTimelock.connect(deployer).addTimelock(timelockReceiver3Address, TIMELOCK_AMOUNT, TIMESTAMP_NOW, CLIFF_DURATION, VESTING_DURATION);
+        await batchTimelock.connect(deployer).addTimelock(timelockReceiver4Address, TIMELOCK_AMOUNT, TIMESTAMP_NOW, CLIFF_DURATION, VESTING_DURATION);
+      });
+
+      it('Should return the correct timelock receivers', async function () {
+        const timelockReceivers = await batchTimelock.getTimelockReceivers(OFFSET, 4);
+        expect(timelockReceivers.length).to.equal(4);
+        expect(timelockReceivers[0]).to.equal(timelockReceiver1Address);
+        expect(timelockReceivers[1]).to.equal(timelockReceiver2Address);
+        expect(timelockReceivers[2]).to.equal(timelockReceiver3Address);
+        expect(timelockReceivers[3]).to.equal(timelockReceiver4Address);
+      });
+
+      it('Should return the correct timelock receivers with offset', async function () {
+        const timelockReceivers = await batchTimelock.getTimelockReceivers(2, 2);
+        expect(timelockReceivers.length).to.equal(2);
+        expect(timelockReceivers[0]).to.equal(timelockReceiver3Address);
+        expect(timelockReceivers[1]).to.equal(timelockReceiver4Address);
+      });
+
+      it('Should return the correct timelock receivers with offset and limit', async function () {
+        const timelockReceivers = await batchTimelock.getTimelockReceivers(1, 2);
+        expect(timelockReceivers.length).to.equal(2);
+        expect(timelockReceivers[0]).to.equal(timelockReceiver2Address);
+        expect(timelockReceivers[1]).to.equal(timelockReceiver3Address);
+      });
+    });
+
+    describe("getTimelockReceiversAmount", function () {
+      it('Should return the correct timelock receivers amount', async function () {
+        timelockReceiver1Address = await timelockReceiver1.getAddress();
+        timelockReceiver2Address = await timelockReceiver2.getAddress();
+        timelockReceiver3Address = await timelockReceiver3.getAddress();
+        timelockReceiver4Address = await timelockReceiver4.getAddress();
+        await batchTimelock.connect(deployer).addTimelock(timelockReceiver1Address, TIMELOCK_AMOUNT, TIMESTAMP_NOW, CLIFF_DURATION, VESTING_DURATION);
+        await batchTimelock.connect(deployer).addTimelock(timelockReceiver2Address, TIMELOCK_AMOUNT, TIMESTAMP_NOW, CLIFF_DURATION, VESTING_DURATION);
+        await batchTimelock.connect(deployer).addTimelock(timelockReceiver3Address, TIMELOCK_AMOUNT, TIMESTAMP_NOW, CLIFF_DURATION, VESTING_DURATION);
+        await batchTimelock.connect(deployer).addTimelock(timelockReceiver4Address, TIMELOCK_AMOUNT, TIMESTAMP_NOW, CLIFF_DURATION, VESTING_DURATION);
+        const timelockReceiversAmount = await batchTimelock.getTimelockReceiversAmount();
+        expect(timelockReceiversAmount).to.equal(4);
+      });
+
+      it('Should return 0 if no receivers', async function () {
+        const timelockReceiversAmount = await batchTimelock.getTimelockReceiversAmount();
+        expect(timelockReceiversAmount).to.equal(0);
+      });
+    });
+
+    describe("getCurrentAllowance", function () {
+      it('Should return the correct allowance', async function () {
+        const allowance = await batchTimelock.getCurrentAllowance();
+        expect(allowance).to.equal(ethers.parseEther('10'));
+      });
+    });
+
+    describe("getTotalTokensLocked", function () {
+      it('Should return the correct total tokens locked', async function () {
+        timelockReceiver1Address = await timelockReceiver1.getAddress();
+        timelockReceiver2Address = await timelockReceiver2.getAddress();
+        timelockReceiver3Address = await timelockReceiver3.getAddress();
+        timelockReceiver4Address = await timelockReceiver4.getAddress();
+        await batchTimelock.connect(deployer).addTimelock(timelockReceiver1Address, TIMELOCK_AMOUNT, TIMESTAMP_NOW, CLIFF_DURATION, VESTING_DURATION);
+        await batchTimelock.connect(deployer).addTimelock(timelockReceiver2Address, TIMELOCK_AMOUNT, TIMESTAMP_NOW, CLIFF_DURATION, VESTING_DURATION);
+        await batchTimelock.connect(deployer).addTimelock(timelockReceiver3Address, TIMELOCK_AMOUNT, TIMESTAMP_NOW, CLIFF_DURATION, VESTING_DURATION);
+        await batchTimelock.connect(deployer).addTimelock(timelockReceiver4Address, TIMELOCK_AMOUNT, TIMESTAMP_NOW, CLIFF_DURATION, VESTING_DURATION);
+        const totalTokensLocked = await batchTimelock.getTotalTokensLocked();
+        expect(totalTokensLocked).to.equal(ethers.parseEther('4'));
+      });
+
+      it('Should return 0 if no tokens locked', async function () {
+        const totalTokensLocked = await batchTimelock.getTotalTokensLocked();
+        expect(totalTokensLocked).to.equal(0);
+      });
+    });
+
+    describe("terminate and determinate functions", function () {
+      const CLAIM_AMOUNT = ethers.parseEther("0.1");
+      let timelockReceiver1Address: string;
+
+      beforeEach(async function () {
+        timelockReceiver1Address = await timelockReceiver1.getAddress();
+        await batchTimelock.connect(deployer).addTimelock(timelockReceiver1Address, TIMELOCK_AMOUNT, TIMESTAMP_NOW, CLIFF_DURATION, VESTING_DURATION);
+      });
+
+      it("Should decrease withdrawable amount if terminated", async function () {
+        const halfVestingTimestamp = TIMESTAMP_NOW + CLIFF_DURATION + (VESTING_DURATION / 2) + 1;
+        await batchTimelock.connect(deployer).terminate(timelockReceiver1Address, halfVestingTimestamp);
+
+        await ethers.provider.send("evm_increaseTime", [halfVestingTimestamp]);
+        await ethers.provider.send("evm_mine", []);
+
+        const withdrawableBalance = await batchTimelock.getClaimableBalance(timelockReceiver1Address);
+
+        await expect(batchTimelock.connect(timelockReceiver1).claim(withdrawableBalance))
+          .to.emit(batchTimelock, 'TokensClaimed')
+          .withArgs(timelockReceiver1Address, withdrawableBalance);
+      });
+
+      it("Should re-enable claiming after determinate", async function () {
+        const dateNow = Math.floor(Date.now() / 1000);
+        await batchTimelock.connect(deployer).terminate(timelockReceiver1Address, dateNow);
+        await batchTimelock.connect(deployer).determinate(timelockReceiver1Address);
+        await expect(batchTimelock.connect(timelockReceiver1).claim(CLAIM_AMOUNT))
+          .not.to.be.reverted;
+      });
+    });
+
+    describe('getVestingPoolAddress', function () {
+      it('Should return the correct vesting pool address', async function () {
+        const vestingPoolAddress = await batchTimelock.getVestingPoolAddress();
+        expect(vestingPoolAddress).to.equal(await vestingPool.getAddress());
+      });
+    });
+
+    describe("getTokenAddress", function () {
+      it('Should return the correct token address', async function () {
+        const tokenAddress = await batchTimelock.getTokenAddress();
+        expect(tokenAddress).to.equal(iqtMock.target);
       });
     });
   });

@@ -13,6 +13,11 @@ contract Staking is IStaking, Context {
     using EnumerableSet for EnumerableSet.UintSet;
 
     /**
+     * @dev IStakingManagement instance
+     */
+    IStakingManagement internal _stakingManagement;
+
+    /**
      * @dev Staking token (IQT).
      */
     IERC20 internal _stakingToken;
@@ -23,14 +28,19 @@ contract Staking is IStaking, Context {
     address internal _stakingPool;
 
     /**
-     * @dev IStakingManagement instance
-     */
-    IStakingManagement internal _stakingManagement;
+     * @dev Balance of the staking pool assuming all stakes.
+    */
+    uint256 internal _stakingPoolSize;
 
     /**
      * @dev User stakes data.
      */
     mapping(address => EnumerableSet.UintSet) private _userStakes;
+
+    /**
+     * @dev Stakes per plan.
+    */
+    mapping(uint256 => EnumerableSet.UintSet) private _stakesPerPlan;
 
     /**
      * @dev Mapping from stakeId => Stake
@@ -74,36 +84,17 @@ contract Staking is IStaking, Context {
      * @inheritdoc IStaking
      */
     function stake(uint256 amount, uint256 stakingPlan) external override returns (uint256) {
-        _stakingManagement.checkStakingPlanExists(stakingPlan);
+        _validateStakingAmount(amount, stakingPlan);
 
-        if (amount < _stakingManagement.getMinimumStake()) revert AmountIsLessThanMinimumStake(amount);
-        if (amount > _stakingManagement.getMaximumStake()) revert AmountIsGreaterThanMaximumStake(amount);
+        uint256 estimatedEarningsInTokens;
+        (estimatedEarningsInTokens, ) = estimateStakeEarnings(amount, stakingPlan);
 
-        uint256 allowanceToStakingPool = _stakingToken.allowance(_msgSender(), address(this));
+        _checkStakingPoolBalance(estimatedEarningsInTokens);
+        _checkAllowance(amount);
 
-        if (allowanceToStakingPool < amount) {
-            revert InsufficientAllowance(amount, allowanceToStakingPool);
-        }
+        uint256 stakeId = _createStakeRecord(amount, stakingPlan);
 
-        uint256 stakeId = _allStakeIds.length() + 1;
-        _userStakes[_msgSender()].add(stakeId);
-        _allStakeIds.add(stakeId);
-
-        uint256 stakingPlanDuration = _stakingManagement.getStakingPlan(stakingPlan).duration;
-
-        _stakes[stakeId] = Stake({
-            staker: _msgSender(),
-            amount: amount,
-            stakingPlanId: stakingPlan,
-            startTimestamp: block.timestamp,
-            endTimestamp: block.timestamp + stakingPlanDuration,
-            earningsInTokens: 0,
-            earningsPercentage: 0,
-            earlyWithdrawal: false,
-            withdrawn: false
-        });
-
-        _stakingToken.transferFrom(_msgSender(), _stakingPool, amount);
+        _transferToStakingPool(amount, amount);
 
         emit StakeAdded(_msgSender(), stakeId);
 
@@ -125,12 +116,17 @@ contract Staking is IStaking, Context {
             uint256 withdrawalAmount = stakeRecord.amount;
             stakeRecord.earlyWithdrawal = true;
             stakeRecord.withdrawn = true;
+            stakeRecord.endTimestamp = currentTimestamp;
+            stakeRecord.earningsInTokens = 0;
+            stakeRecord.earningsPercentage = 0;
             _stakingToken.transferFrom(_stakingPool, _msgSender(), withdrawalAmount);
         } else {
             (stakeRecord.earningsInTokens, stakeRecord.earningsPercentage) = calculateStakeEarnings(stakeId);
             stakeRecord.withdrawn = true;
             _stakingToken.transferFrom(_stakingPool, _msgSender(), stakeRecord.amount + stakeRecord.earningsInTokens);
         }
+
+        _stakesPerPlan[stakeRecord.stakingPlanId].remove(stakeId);
 
         emit StakeWithdrawn(_msgSender(), stakeId);
     }
@@ -151,12 +147,10 @@ contract Staking is IStaking, Context {
         Stake memory stakeRecord = _stakes[stakeId];
         IStakingManagement.StakingPlan memory plan = _stakingManagement.getStakingPlan(stakeRecord.stakingPlanId);
 
-        if (plan.duration == 0 || block.timestamp < stakeRecord.startTimestamp) {
-            return (0, 0);
-        }
+        if (block.timestamp < stakeRecord.startTimestamp) return (0, 0);
 
         uint256 compoundingFrequency = Constants.DAYS_IN_YEAR;
-        uint256 precision = 1e18;
+        uint256 precision = Constants.DECIMALS_PRECISION;
         uint256 dailyRate = (plan.apy * precision) / Constants.MAX_APY / compoundingFrequency;
         uint256 compoundingPeriods = (block.timestamp < stakeRecord.endTimestamp ?
             block.timestamp : stakeRecord.endTimestamp)
@@ -180,6 +174,33 @@ contract Staking is IStaking, Context {
         return (earningsInTokens, earningsPercentage);
     }
 
+    /**
+     * @inheritdoc IStaking
+     */
+    function estimateStakeEarnings(
+        uint256 amount,
+        uint256 stakingPlanId
+    ) public view returns (uint256 predictedEarningsInTokens, uint16 predictedEarningsPercentage) {
+        _stakingManagement.checkStakingPlanExists(stakingPlanId);
+        IStakingManagement.StakingPlan memory plan = _stakingManagement.getStakingPlan(stakingPlanId);
+
+        uint256 precision = Constants.DECIMALS_PRECISION;
+
+        uint256 dailyRate = (plan.apy * precision) / Constants.MAX_APY / Constants.DAYS_IN_YEAR;
+        uint256 compoundingPeriods = plan.duration / Constants.SECONDS_IN_DAY;
+
+        uint256 compoundedBalance = amount * precision;
+        for (uint256 i = 0; i < compoundingPeriods; i++) {
+            compoundedBalance += (compoundedBalance * dailyRate / precision);
+        }
+
+        predictedEarningsInTokens = compoundedBalance / precision - amount;
+        predictedEarningsPercentage = (predictedEarningsInTokens > 0 && amount > 0) 
+            ? uint16((predictedEarningsInTokens * Constants.MAX_APY * precision) / amount / precision) 
+            : 0;
+
+        return (predictedEarningsInTokens, predictedEarningsPercentage);
+    }
 
     /**
      * @inheritdoc IStaking
@@ -290,17 +311,20 @@ contract Staking is IStaking, Context {
             (uint256 earningsInTokens, uint16 earningsPercentage) = calculateStakeEarnings(stakeIds[i]);
             totalEarningsInTokens += earningsInTokens;
 
-            totalWeightedPercentage += uint256(earningsPercentage) * earningsInTokens / 1e4;
+            // Weight the percentage by the earnings in tokens and accumulate
+            totalWeightedPercentage += (uint256(earningsPercentage) * earningsInTokens) / 1e4; // Adjust for percentage scale
         }
 
         if (totalEarningsInTokens > 0) {
-            totalEarningsPercentage = uint16(totalWeightedPercentage * 1e4 / totalEarningsInTokens);
+            // Calculate the total earnings percentage as a weighted average
+            totalEarningsPercentage = uint16((totalWeightedPercentage * 1e4) / totalEarningsInTokens);
         } else {
             totalEarningsPercentage = 0;
         }
 
         return (totalEarningsInTokens, totalEarningsPercentage);
     }
+
 
     /**
      * @inheritdoc IStaking
@@ -326,6 +350,37 @@ contract Staking is IStaking, Context {
     /**
      * @inheritdoc IStaking
      */
+    function getStakesAmountPerPlan(uint256 stakingPlanId) external view override returns (uint256) {
+        _stakingManagement.checkStakingPlanExists(stakingPlanId);
+        return _stakesPerPlan[stakingPlanId].length();
+    }
+
+    /**
+     * @inheritdoc IStaking
+     */
+    function getStakesPerPlan(uint256 stakingPlanId, uint256 offset, uint256 limit) external view override returns (Stake[] memory) {
+        _stakingManagement.checkStakingPlanExists(stakingPlanId);
+        uint256 stakeCount = _stakesPerPlan[stakingPlanId].length();
+        if (offset >= stakeCount) {
+            return new Stake[](0);
+        }
+
+        if (offset + limit > stakeCount) {
+            limit = stakeCount - offset;
+        }
+
+        Stake[] memory stakes = new Stake[](limit);
+        for (uint256 i = 0; i < limit; i++) {
+            uint256 stakeId = _stakesPerPlan[stakingPlanId].at(offset + i);
+            stakes[i] = _stakes[stakeId];
+        }
+
+        return stakes;
+    }
+
+    /**
+     * @inheritdoc IStaking
+     */
     function getStakingPool() external view override returns (address) {
         return _stakingPool;
     }
@@ -336,5 +391,52 @@ contract Staking is IStaking, Context {
      */
     function _isStakeExists(uint256 stakeId) internal view returns (bool) {
         return _allStakeIds.contains(stakeId);
+    }
+
+    function _validateStakingAmount(uint256 amount, uint256 stakingPlan) internal view {
+        _stakingManagement.checkStakingPlanExists(stakingPlan);
+        if (amount < _stakingManagement.getMinimumStake()) revert AmountIsLessThanMinimumStake(amount);
+        if (amount > _stakingManagement.getMaximumStake()) revert AmountIsGreaterThanMaximumStake(amount);
+    }
+
+    function _checkStakingPoolBalance(uint256 estimatedEarningsInTokens) internal view {
+        uint256 stakingPoolBalance = _stakingToken.balanceOf(_stakingPool);
+        if (stakingPoolBalance < _stakingPoolSize + estimatedEarningsInTokens) {
+            revert InsufficientStakingPoolBalance(_stakingPoolSize + estimatedEarningsInTokens, stakingPoolBalance);
+        }
+    }
+
+    function _checkAllowance(uint256 amount) internal view {
+        uint256 allowanceToStaking = _stakingToken.allowance(_msgSender(), address(this));
+        if (allowanceToStaking < amount) {
+            revert InsufficientAllowance(amount, allowanceToStaking);
+        }
+    }
+
+    function _createStakeRecord(uint256 amount, uint256 stakingPlan) internal returns (uint256 stakeId) {
+        stakeId = _allStakeIds.length() + 1;
+        uint256 stakingPlanDuration = _stakingManagement.getStakingPlan(stakingPlan).duration;
+        _stakes[stakeId] = Stake({
+            staker: _msgSender(),
+            amount: amount,
+            stakingPlanId: stakingPlan,
+            startTimestamp: block.timestamp,
+            endTimestamp: block.timestamp + stakingPlanDuration,
+            earningsInTokens: 0,
+            earningsPercentage: 0,
+            earlyWithdrawal: false,
+            withdrawn: false
+        });
+
+        _userStakes[_msgSender()].add(stakeId);
+        _allStakeIds.add(stakeId);
+        _stakesPerPlan[stakingPlan].add(stakeId);
+
+        return stakeId;
+    }
+
+    function _transferToStakingPool(uint256 amount, uint256 estimatedEarningsInTokens) internal {
+        _stakingToken.transferFrom(_msgSender(), _stakingPool, amount);
+        _stakingPoolSize += estimatedEarningsInTokens;
     }
 }

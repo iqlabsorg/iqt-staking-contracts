@@ -24,6 +24,17 @@ interface IStakingManagement {
     error MinimumStakeMustBeLessThanOrEqualToMaximumStake();
 
     /**
+     * @dev Reverts if the minimum stake is not greater than zero.
+     * @param planId Unique ID of the staking plan.
+     */
+    error StakingPlanHasActiveStakes(uint256 planId);
+
+    /**
+     * @dev Reverts if the caller is not a staking manager.
+     */
+    error CallerIsNotAStakingManager();
+
+    /**
      * @dev Emitted when a staking plan is added.
      * @param planId Staking plan ID.
      * @param duration Stake duration (in seconds).
@@ -62,14 +73,6 @@ interface IStakingManagement {
      * @return Unique ID of the staking plan.
      */
     function addStakingPlan(uint256 duration, uint16 apy) external returns (uint256);
-
-    /**
-     * @dev Update an existing staking plan.
-     * @param planId Unique ID of the staking plan.
-     * @param duration Duration of the staking plan (in seconds).
-     * @param apy Annual Percentage Rate of the staking plan.
-     */
-    function updateStakingPlan(uint256 planId, uint256 duration, uint16 apy) external;
 
     /**
      * @dev Remove an existing staking plan.
@@ -111,6 +114,12 @@ interface IStakingManagement {
      * @param planId Unique ID of the staking plan.
      */
     function checkStakingPlanExists(uint256 planId) external view;
+
+    /**
+     * @dev Set the staking contract.
+     * @param staking Address of the staking contract.
+    */
+    function setStaking(address staking) external;
 
     /**
      * @dev Get staking token
@@ -160,4 +169,10 @@ interface IStakingManagement {
      * @return maximumStake Maximum stake.
      */
     function getMaximumStake() external view returns (uint256);
+
+    /**
+     * @dev Get the staking contract.
+     * @return Address of the staking contract.
+     */
+    function getStaking() external view returns (address);
 }

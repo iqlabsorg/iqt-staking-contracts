@@ -2,19 +2,26 @@
 pragma solidity ^0.8.19;
 
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
 
 import {IStakingManagement} from "./IStakingManagement.sol";
+import {StakingRoles} from "../library/StakingRoles.sol";
 import {Constants} from "../library/Constants.sol";
+import {IStaking} from "../staking/IStaking.sol";
 
-contract StakingManagement is IStakingManagement, Ownable {
+contract StakingManagement is IStakingManagement, AccessControl {
     using EnumerableSet for EnumerableSet.UintSet;
 
     /**
      * @dev Staking token (IQT).
      */
     IERC20 internal stakingToken;
+
+    /**
+     * @dev IStakingManagement instance
+     */
+    IStaking internal _staking;
 
     /**
      * @dev Staking plans.
@@ -41,6 +48,13 @@ contract StakingManagement is IStakingManagement, Ownable {
      */
     uint256 internal _maximumStake;
 
+    modifier onlyStakingManager() {
+        if (!hasRole(StakingRoles.STAKING_MANAGER_ROLE, _msgSender()) && !hasRole(DEFAULT_ADMIN_ROLE, _msgSender())) {
+            revert CallerIsNotAStakingManager();
+        }
+        _;
+    }
+
     /**
      * @dev Constructor.
      * @param _stakingToken Staking token (IQT).
@@ -48,12 +62,15 @@ contract StakingManagement is IStakingManagement, Ownable {
     constructor(address _stakingToken) {
         stakingToken = IERC20(_stakingToken);
         _withdrawalEnabled = false;
+
+        _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
+        _setupRole(StakingRoles.STAKING_MANAGER_ROLE, _msgSender());
     }
 
     /**
      * @inheritdoc IStakingManagement
      */
-    function addStakingPlan(uint256 duration, uint16 apy) external override onlyOwner returns (uint256) {
+    function addStakingPlan(uint256 duration, uint16 apy) external override onlyStakingManager returns (uint256) {
         if (duration == 0) revert DurationMustBeGreaterThanZero();
         if (apy == 0 || apy > Constants.MAX_APY) revert APYMustBeWithinRange();
 
@@ -67,20 +84,9 @@ contract StakingManagement is IStakingManagement, Ownable {
     /**
      * @inheritdoc IStakingManagement
      */
-    function updateStakingPlan(uint256 planId, uint256 duration, uint16 apy) external override onlyOwner {
+    function removeStakingPlan(uint256 planId) external override onlyStakingManager {
         _checkStakingPlanExists(planId);
-
-        if (duration == 0) revert DurationMustBeGreaterThanZero();
-        if (apy == 0 || apy > Constants.MAX_APY) revert APYMustBeWithinRange();
-
-        _stakingPlans[planId] = StakingPlan({duration: duration, apy: apy});
-    }
-
-    /**
-     * @inheritdoc IStakingManagement
-     */
-    function removeStakingPlan(uint256 planId) external override onlyOwner {
-        _checkStakingPlanExists(planId);
+        _checkNoActiveStakes(planId);
         _stakingPlanIds.remove(planId);
         delete _stakingPlans[planId];
     }
@@ -88,21 +94,21 @@ contract StakingManagement is IStakingManagement, Ownable {
     /**
      * @inheritdoc IStakingManagement
      */
-    function enableWithdraw() external override onlyOwner {
+    function enableWithdraw() external override onlyStakingManager {
         _withdrawalEnabled = true;
     }
 
     /**
      * @inheritdoc IStakingManagement
      */
-    function disableWithdraw() external override onlyOwner {
+    function disableWithdraw() external override onlyStakingManager {
         _withdrawalEnabled = false;
     }
 
     /**
      * @inheritdoc IStakingManagement
      */
-    function setStakingLimits(uint256 minimumStake, uint256 maximumStake) external override onlyOwner {
+    function setStakingLimits(uint256 minimumStake, uint256 maximumStake) external override onlyStakingManager {
         if (minimumStake > maximumStake) revert MinimumStakeMustBeLessThanOrEqualToMaximumStake();
         _minimumStake = minimumStake;
         _maximumStake = maximumStake;
@@ -111,7 +117,7 @@ contract StakingManagement is IStakingManagement, Ownable {
     /**
      * @inheritdoc IStakingManagement
      */
-    function setMininumStake(uint256 minimumStake) external override onlyOwner {
+    function setMininumStake(uint256 minimumStake) external override onlyStakingManager {
         if (minimumStake > _maximumStake) revert MinimumStakeMustBeLessThanOrEqualToMaximumStake();
         _minimumStake = minimumStake;
     }
@@ -119,7 +125,7 @@ contract StakingManagement is IStakingManagement, Ownable {
     /**
      * @inheritdoc IStakingManagement
      */
-    function setMaximumStake(uint256 maximumStake) external override onlyOwner {
+    function setMaximumStake(uint256 maximumStake) external override onlyStakingManager {
         if (_minimumStake > maximumStake) revert MinimumStakeMustBeLessThanOrEqualToMaximumStake();
         _maximumStake = maximumStake;
     }
@@ -129,6 +135,13 @@ contract StakingManagement is IStakingManagement, Ownable {
      */
     function checkStakingPlanExists(uint256 planId) external view override {
         _checkStakingPlanExists(planId);
+    }
+
+    /**
+     * @inheritdoc IStakingManagement
+     */
+    function setStaking(address staking) external override onlyStakingManager {
+        _staking = IStaking(staking);
     }
 
     /**
@@ -204,10 +217,24 @@ contract StakingManagement is IStakingManagement, Ownable {
     }
 
     /**
+     * @inheritdoc IStakingManagement
+     */
+    function getStaking() external view override returns (address) {
+        return address(_staking);
+    }
+
+    /**
      * @dev Reverts if the staking plan does not exist.
      * @param planId Unique ID of the staking plan.
      */
     function _checkStakingPlanExists(uint256 planId) internal view {
         if (!_stakingPlanIds.contains(planId)) revert StakingPlanDoesNotExist(planId);
+    }
+
+    /**
+     * @dev Reverts if the staking plan has active stakes.
+    */
+    function _checkNoActiveStakes(uint256 planId) internal view {
+        if (_staking.getStakesAmountPerPlan(planId) > 0) revert StakingPlanHasActiveStakes(planId);
     }
 }

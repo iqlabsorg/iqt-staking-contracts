@@ -51,6 +51,13 @@ interface IStaking {
     error InsufficientAllowance(uint256 requiredAllowance, uint256 currentAllowance);
 
     /**
+     * @dev Reverts if the staking pool does not have enough balance.
+     * @param requiredBalance Amount of tokens required to be available.
+     * @param currentBalance Amount of tokens currently available.
+     */
+    error InsufficientStakingPoolBalance(uint256 requiredBalance, uint256 currentBalance);
+
+    /**
      * @dev Emitted when a stake is added.
      * @param staker Address of the staker.
      * @param stakeId Unique ID of the stake.
@@ -182,6 +189,18 @@ interface IStaking {
     ) external view returns (uint256 totalEarningsInTokens, uint16 totalEarningsPercentage);
 
     /**
+     * @dev Estimate the stake earnings in tokens and percentages
+     * @param amount Amount of tokens to stake.
+     * @param stakingPlanId Index of the staking plan to stake for.
+     * @return predictedEarningsInTokens Estimated amount of tokens to be earned.
+     * @return predictedEarningsPercentage Estimated percentage of tokens to be earned.
+     */
+    function estimateStakeEarnings(
+        uint256 amount,
+        uint256 stakingPlanId
+    ) external view returns (uint256 predictedEarningsInTokens, uint16 predictedEarningsPercentage);
+
+    /**
      * @dev Returns `true` if a stake exists.
      * @param stakeId Unique ID of the stake.
      */
@@ -196,6 +215,20 @@ interface IStaking {
      * @dev Returns the address of the staking token.
     */
     function getStakingToken() external view returns (address);
+
+    /**
+     * @dev Returns the address of the reward token.
+     * @param stakingPlanId Index of the staking plan.
+    */
+    function getStakesAmountPerPlan(uint256 stakingPlanId) external view returns (uint256);
+
+    /**
+     * @dev Returns all stakes per staking plan.
+     * @param stakingPlanId Index of the staking plan.
+     * @param offset Offset of the stakes.
+     * @param limit Limit of the stakes.
+    */
+    function getStakesPerPlan(uint256 stakingPlanId, uint256 offset, uint256 limit) external view returns (Stake[] memory);
 
     /**
      * @dev Returns the address of the staking pool.

@@ -54,6 +54,16 @@ interface IBatchTimelock {
     error TokenTransferFailed(address tokenPool, address receiver, uint256 amount);
 
     /**
+     * @dev Reverts if the caller is not a termination admin.
+     */
+    error CallerIsNotATerminationAdmin();
+
+    /**
+     * @dev Reverts if the caller is not the timelock creator.
+     */
+    error CallerIsNotATimelockCreator();
+
+    /**
      * @notice Token receiver struct that is used for adding _timelocks for timelock.
      * @param receiver Address of the receiver.
      * @param totalAmount Total amount of tokens to be vested.
