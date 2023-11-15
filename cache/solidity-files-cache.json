@@ -44,8 +44,8 @@
       ]
     },
     "/Users/el3ktron/Development/solidity/iqt-staking-contracts/contracts/staking-management/StakingManagement.sol": {
-      "lastModificationDate": 1699915895250,
-      "contentHash": "5f36f0c113daccdc2970f411d2f1026f",
+      "lastModificationDate": 1700064157368,
+      "contentHash": "4db53362e96e674a4550329478626973",
       "sourceName": "contracts/staking-management/StakingManagement.sol",
       "solcConfig": {
         "version": "0.8.19",
@@ -136,8 +136,8 @@
       ]
     },
     "/Users/el3ktron/Development/solidity/iqt-staking-contracts/contracts/staking/IStaking.sol": {
-      "lastModificationDate": 1699898413915,
-      "contentHash": "fd37618abdce88e1edea9f61eae06348",
+      "lastModificationDate": 1700064330857,
+      "contentHash": "269be2a5222f99e3018eb33e84519db0",
       "sourceName": "contracts/staking/IStaking.sol",
       "solcConfig": {
         "version": "0.8.19",
@@ -829,8 +829,8 @@
       ]
     },
     "/Users/el3ktron/Development/solidity/iqt-staking-contracts/contracts/timelock/BatchTimelock.sol": {
-      "lastModificationDate": 1699915916958,
-      "contentHash": "a8c3aa51360764a5febd2eed110553f7",
+      "lastModificationDate": 1700063974980,
+      "contentHash": "f53b8af93ae431e0609ca8815904f654",
       "sourceName": "contracts/timelock/BatchTimelock.sol",
       "solcConfig": {
         "version": "0.8.19",
@@ -1047,8 +1047,8 @@
       ]
     },
     "/Users/el3ktron/Development/solidity/iqt-staking-contracts/contracts/staking/Staking.sol": {
-      "lastModificationDate": 1700061748052,
-      "contentHash": "4f846859f9f1e3f32032dc7035733682",
+      "lastModificationDate": 1700064972020,
+      "contentHash": "adad23c4b5fdcb46628cbcc014ef8c88",
       "sourceName": "contracts/staking/Staking.sol",
       "solcConfig": {
         "version": "0.8.19",

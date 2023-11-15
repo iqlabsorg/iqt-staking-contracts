@@ -234,4 +234,9 @@ interface IStaking {
      * @dev Returns the address of the staking pool.
     */
     function getStakingPool() external view returns (address);
+
+    /**
+     * @dev Returns the size of staking pool covering all the staking rewards.
+    */
+    function getStakingPoolSize() external view returns (uint256);
 }

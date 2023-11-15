@@ -94,7 +94,7 @@ contract Staking is IStaking, Context {
 
         uint256 stakeId = _createStakeRecord(amount, stakingPlan);
 
-        _transferToStakingPool(amount, amount);
+        _transferToStakingPool(amount, estimatedEarningsInTokens);
 
         emit StakeAdded(_msgSender(), stakeId);
 
@@ -157,8 +157,11 @@ contract Staking is IStaking, Context {
             - stakeRecord.startTimestamp;
         uint256 totalCompoundingPeriods = compoundingPeriods / Constants.SECONDS_IN_DAY;
         uint256 compoundedBalance = stakeRecord.amount * precision;
-        for (uint256 i = 0; i < totalCompoundingPeriods; i++) {
-            compoundedBalance = compoundedBalance + (compoundedBalance * dailyRate / precision);
+
+        unchecked {
+            for (uint256 i = 0; i < totalCompoundingPeriods; ++i) {
+                compoundedBalance += (compoundedBalance * dailyRate / precision);
+            }
         }
         earningsInTokens = compoundedBalance / precision - stakeRecord.amount;
         if (block.timestamp > stakeRecord.endTimestamp) {
@@ -216,9 +219,11 @@ contract Staking is IStaking, Context {
         }
 
         Stake[] memory stakes = new Stake[](limit);
-        for (uint256 i = 0; i < limit; i++) {
-            uint256 stakeId = _userStakes[staker].at(offset + i);
-            stakes[i] = _stakes[stakeId];
+        unchecked {
+            for (uint256 i = 0; i < limit; ++i) {
+                uint256 stakeId = _userStakes[staker].at(offset + i);
+                stakes[i] = _stakes[stakeId];
+            }
         }
 
         return stakes;
@@ -386,6 +391,13 @@ contract Staking is IStaking, Context {
     }
 
     /**
+     * @inheritdoc IStaking
+     */
+    function getStakingPoolSize() external view override returns (uint256) {
+        return _stakingPoolSize;
+    }
+
+    /**
      * @dev Returns `true` if a stake exists.
      * @param stakeId Unique ID of the stake.
      */
@@ -393,12 +405,20 @@ contract Staking is IStaking, Context {
         return _allStakeIds.contains(stakeId);
     }
 
+    /**
+     * @dev Validates the staking amount.
+     * @param amount Amount of tokens to stake.
+    */
     function _validateStakingAmount(uint256 amount, uint256 stakingPlan) internal view {
         _stakingManagement.checkStakingPlanExists(stakingPlan);
         if (amount < _stakingManagement.getMinimumStake()) revert AmountIsLessThanMinimumStake(amount);
         if (amount > _stakingManagement.getMaximumStake()) revert AmountIsGreaterThanMaximumStake(amount);
     }
 
+    /**
+     * @dev Checks the staking pool balance.
+     * @param estimatedEarningsInTokens Estimated earnings in tokens.
+    */
     function _checkStakingPoolBalance(uint256 estimatedEarningsInTokens) internal view {
         uint256 stakingPoolBalance = _stakingToken.balanceOf(_stakingPool);
         if (stakingPoolBalance < _stakingPoolSize + estimatedEarningsInTokens) {
@@ -406,6 +426,10 @@ contract Staking is IStaking, Context {
         }
     }
 
+    /**
+     * @dev Checks the allowance to the staking pool.
+     * @param amount Amount of tokens to stake.
+    */
     function _checkAllowance(uint256 amount) internal view {
         uint256 allowanceToStaking = _stakingToken.allowance(_msgSender(), address(this));
         if (allowanceToStaking < amount) {
@@ -413,6 +437,11 @@ contract Staking is IStaking, Context {
         }
     }
 
+    /**
+     * @dev Creates a new stake record.
+     * @param amount Amount of tokens to stake.
+     * @param stakingPlan Index of the staking plan to stake for.
+    */
     function _createStakeRecord(uint256 amount, uint256 stakingPlan) internal returns (uint256 stakeId) {
         stakeId = _allStakeIds.length() + 1;
         uint256 stakingPlanDuration = _stakingManagement.getStakingPlan(stakingPlan).duration;
@@ -435,8 +464,16 @@ contract Staking is IStaking, Context {
         return stakeId;
     }
 
+    /**
+     * @dev Transfers tokens to the staking pool.
+     * @param amount Amount of tokens to stake.
+     * @param estimatedEarningsInTokens Estimated earnings in tokens.
+    */
     function _transferToStakingPool(uint256 amount, uint256 estimatedEarningsInTokens) internal {
         _stakingToken.transferFrom(_msgSender(), _stakingPool, amount);
-        _stakingPoolSize += estimatedEarningsInTokens;
+        unchecked {
+            _stakingPoolSize += amount;
+            _stakingPoolSize += estimatedEarningsInTokens;
+        }
     }
 }

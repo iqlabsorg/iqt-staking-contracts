@@ -1038,7 +1038,35 @@ describe("Staking Contract", function () {
         await expect(staking.getStakesAmountPerPlan(NON_EXISTING_PLAN_ID))
           .to.be.revertedWithCustomError(stakingManagement, "StakingPlanDoesNotExist")
       });
-    })
+    });
+
+    describe("getStakingPoolSize", function() {
+      it("should return the correct pool size after a couple of stakes", async function () {
+        const stake1EsimatedEarnings = await staking.estimateStakeEarnings(QUARTER_STAKING_AMOUNT, oneMonthStakingPlanId);
+        const stake2EsimatedEarnings = await staking.estimateStakeEarnings(QUARTER_STAKING_AMOUNT, threeMonthsStakingPlanId);
+        const stake3EsimatedEarnings = await staking.estimateStakeEarnings(QUARTER_STAKING_AMOUNT, sixMonthsStakingPlanId);
+        const stake4EsimatedEarnings = await staking.estimateStakeEarnings(QUARTER_STAKING_AMOUNT, twelveMonthsStakingPlanId);
+
+        await staking.connect(staker1).stake(QUARTER_STAKING_AMOUNT, oneMonthStakingPlanId);
+        await staking.connect(staker1).stake(QUARTER_STAKING_AMOUNT, threeMonthsStakingPlanId);
+        await staking.connect(staker1).stake(QUARTER_STAKING_AMOUNT, sixMonthsStakingPlanId);
+        await staking.connect(staker1).stake(QUARTER_STAKING_AMOUNT, twelveMonthsStakingPlanId);
+
+        const allEarnings = stake1EsimatedEarnings.predictedEarningsInTokens +
+          stake2EsimatedEarnings.predictedEarningsInTokens +
+          stake3EsimatedEarnings.predictedEarningsInTokens +
+          stake4EsimatedEarnings.predictedEarningsInTokens;
+        const expectedPoolSize = STAKING_AMOUNT + allEarnings;
+        const stakingPoolSize = await staking.getStakingPoolSize();
+
+        expect(stakingPoolSize).to.be.eq(expectedPoolSize);
+      });
+
+      it("should return zero if no stakes", async function () {
+        const stakingPoolSize = await staking.getStakingPoolSize();
+        expect(stakingPoolSize).to.be.eq(0);
+      });
+    });
   });
 });
 

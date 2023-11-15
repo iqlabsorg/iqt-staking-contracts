@@ -74,11 +74,13 @@ contract StakingManagement is IStakingManagement, AccessControl {
         if (duration == 0) revert DurationMustBeGreaterThanZero();
         if (apy == 0 || apy > Constants.MAX_APY) revert APYMustBeWithinRange();
 
-        uint256 planId = _stakingPlanIds.length() + 1;
-        _stakingPlans[planId] = StakingPlan({duration: duration, apy: apy});
-        _stakingPlanIds.add(planId);
+        unchecked {
+            uint256 planId = _stakingPlanIds.length() + 1;
+            _stakingPlans[planId] = StakingPlan({duration: duration, apy: apy});
+            _stakingPlanIds.add(planId);
 
-        return planId;
+            return planId;
+        }
     }
 
     /**
@@ -173,11 +175,12 @@ contract StakingManagement is IStakingManagement, AccessControl {
         }
 
         StakingPlan[] memory plans = new StakingPlan[](limit);
-        for (uint256 i = 0; i < limit; i++) {
-            uint256 planId = _stakingPlanIds.at(offset + i);
-            plans[i] = _stakingPlans[planId];
+        unchecked {
+            for (uint256 i = 0; i < limit; ++i) {
+                uint256 planId = _stakingPlanIds.at(offset + i);
+                plans[i] = _stakingPlans[planId];
+            }
         }
-
         return plans;
     }
 

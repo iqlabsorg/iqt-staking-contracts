@@ -105,14 +105,17 @@ contract BatchTimelock is ITerminateable, IBatchTimelock, IVestingPool, AccessCo
             revert EmptyReceiversArray();
         }
 
-        for (uint256 i = 0; i < receivers.length; i++) {
-            _addTimelock(
-                receivers[i].receiver,
-                receivers[i].totalAmount,
-                receivers[i].timelockFrom,
-                receivers[i].cliffDuration,
-                receivers[i].vestingDuration
-            );
+        uint256 receiversCount = receivers.length; // Caching the array length outside a loop
+        unchecked {
+            for (uint256 i = 0; i < receiversCount; ++i) {
+                _addTimelock(
+                    receivers[i].receiver,
+                    receivers[i].totalAmount,
+                    receivers[i].timelockFrom,
+                    receivers[i].cliffDuration,
+                    receivers[i].vestingDuration
+                );
+            }
         }
     }
 
@@ -204,7 +207,7 @@ contract BatchTimelock is ITerminateable, IBatchTimelock, IVestingPool, AccessCo
     /**
      * @inheritdoc IBatchTimelock
     */
-   function getTimelockReceivers(uint256 offset, uint256 limit) external view returns (address[] memory) {
+    function getTimelockReceivers(uint256 offset, uint256 limit) external view returns (address[] memory) {
         uint256 receiverCount = _allReceivers.length();
         if (offset >= receiverCount) {
             return new address[](0);
@@ -215,10 +218,11 @@ contract BatchTimelock is ITerminateable, IBatchTimelock, IVestingPool, AccessCo
         }
 
         address[] memory receivers = new address[](limit);
-        for (uint256 i = 0; i < limit; i++) {
-            receivers[i] = _allReceivers.at(offset + i);
+        unchecked {
+            for (uint256 i = 0; i < limit; ++i) {
+                receivers[i] = _allReceivers.at(offset + i);
+            }
         }
-
         return receivers;
     }
 
@@ -241,8 +245,11 @@ contract BatchTimelock is ITerminateable, IBatchTimelock, IVestingPool, AccessCo
      */
     function getTotalTokensLocked() public view returns (uint256) {
         uint256 total = 0;
-        for (uint256 i = 0; i < _allReceivers.length(); i++) {
-            total += _timelocks[_allReceivers.at(i)].totalAmount;
+        uint256 receiverCount = _allReceivers.length(); // Caching the array length outside a loop
+        unchecked {
+            for (uint256 i = 0; i < receiverCount; ++i) {
+                total += _timelocks[_allReceivers.at(i)].totalAmount;
+            }
         }
         return total;
     }
