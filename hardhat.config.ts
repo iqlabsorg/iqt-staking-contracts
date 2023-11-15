@@ -5,6 +5,7 @@ import '@nomicfoundation/hardhat-chai-matchers';
 import '@nomicfoundation/hardhat-ethers';
 import '@nomicfoundation/hardhat-verify';
 import '@nomicfoundation/hardhat-toolbox';
+import "hardhat-gas-reporter"
 import * as dotenv from 'dotenv';
 
 const env = dotenv.config();
@@ -13,6 +14,7 @@ import './tasks/deploy-iqt-mock';
 import './tasks/deploy-batch-timelock';
 import './tasks/deploy-staking';
 import './tasks/deploy-staking-management';
+import './tasks/batch-timelock';
 
 const DEPLOYMENT_PRIVATE_KEY = env.parsed?.DEPLOYMENT_PRIVATE_KEY;
 const accounts = DEPLOYMENT_PRIVATE_KEY ? [DEPLOYMENT_PRIVATE_KEY] : [];
@@ -26,6 +28,10 @@ const config: HardhatUserConfig = {
         runs: 200,
       },
     },
+  },
+  gasReporter: {
+    enabled: Boolean(process.env.REPORT_GAS),
+    currency: 'USD',
   },
   namedAccounts: {
     deployer: 0,
