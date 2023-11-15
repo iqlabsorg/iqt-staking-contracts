@@ -164,10 +164,10 @@ contract StakingManagement is IStakingManagement, AccessControl {
     /**
      * @inheritdoc IStakingManagement
      */
-    function getStakingPlans(uint256 offset, uint256 limit) external view override returns (StakingPlan[] memory) {
+    function getStakingPlans(uint256 offset, uint256 limit) external view override returns (StakingPlan[] memory, uint256[] memory) {
         uint256 planCount = _stakingPlanIds.length();
         if (offset >= planCount) {
-            return new StakingPlan[](0);
+            return (new StakingPlan[](0), new uint256[](0));
         }
 
         if (offset + limit > planCount) {
@@ -175,13 +175,15 @@ contract StakingManagement is IStakingManagement, AccessControl {
         }
 
         StakingPlan[] memory plans = new StakingPlan[](limit);
+        uint256[] memory planIds = new uint256[](limit);
         unchecked {
             for (uint256 i = 0; i < limit; ++i) {
                 uint256 planId = _stakingPlanIds.at(offset + i);
                 plans[i] = _stakingPlans[planId];
+                planIds[i] = planId;
             }
         }
-        return plans;
+        return (plans, planIds);
     }
 
     /**

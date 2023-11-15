@@ -137,9 +137,11 @@ interface IStakingManagement {
     /**
      * @dev Get all staking plans.
      * @param offset Offset of the staking plans.
-     * @return Array of staking plans.
+     * @param limit Limit of the staking plans.
+     * @return Staking Plan ids.
+     * @return Staking Plan data structs.
      */
-    function getStakingPlans(uint256 offset, uint256 limit) external view returns (StakingPlan[] memory);
+    function getStakingPlans(uint256 offset, uint256 limit) external view returns (StakingPlan[] memory, uint256[] memory);
 
     /**
      * @dev Get amount of staking plans.

@@ -51,6 +51,10 @@ describe("StakingManagement Contract", function () {
     await stakingToken.connect(deployer).transfer(staker2.getAddress(), STAKER_BALANCE);
   });
 
+  it('prints staking management address', async function () {
+    console.log('STAKING_MANAGER_ROLE: ', STAKING_MANAGER_ROLE);
+  })
+
   describe("Deployment", function () {
     it("Should deploy the StakingManagement contract", async function () {
       expect(stakingManagement.target).to.not.equal(ZERO_ADDRESS);
@@ -141,11 +145,13 @@ describe("StakingManagement Contract", function () {
         expect(await stakingManagement.getStakingPlansAmount()).to.equal(0);
       });
 
-      it ("Should not allow to remove a staking plan twice", async function () {
+      it("Should not allow to remove a staking plan twice", async function () {
         await stakingManagement.connect(deployer).removeStakingPlan(planId);
         await expect(stakingManagement.removeStakingPlan(planId))
           .to.be.revertedWithCustomError(stakingManagement, "StakingPlanDoesNotExist");
-      })
+      });
+
+
 
       it("Should not allow to remove a staking plan if there are active stakes", async function () {
         let planId: BigNumberish;
@@ -405,18 +411,29 @@ describe("StakingManagement Contract", function () {
         await stakingManagement.connect(deployer).addStakingPlan(TWELVE_MONTHS_IN_SECONDS, TWELVE_MONTHS_APY);
       });
 
-      it("Should return the staking plans", async function () {
-        const result = await stakingManagement.getStakingPlans(OFFSET, 4);
-        expect(result[0][0]).to.equal(ONE_MONTH_IN_SECONDS);
-        expect(result[0][1]).to.equal(ONE_MONTH_APY);
-        expect(result[1][0]).to.equal(THREE_MONTHS_IN_SECONDS);
-        expect(result[1][1]).to.equal(THREE_MONTHS_APY);
-        expect(result[2][0]).to.equal(SIX_MONTHS_IN_SECONDS);
-        expect(result[2][1]).to.equal(SIX_MONTHS_APY);
-        expect(result[3][0]).to.equal(TWELVE_MONTHS_IN_SECONDS);
-        expect(result[3][1]).to.equal(TWELVE_MONTHS_APY);
+      it("Should return the staking plans and their IDs", async function () {
+        const [plans, planIds] = await stakingManagement.getStakingPlans(OFFSET, 4);
+
+        expect(plans.length).to.equal(4);
+        expect(planIds.length).to.equal(4);
+
+        expect(plans[0].duration).to.equal(ONE_MONTH_IN_SECONDS);
+        expect(plans[0].apy).to.equal(ONE_MONTH_APY);
+        expect(planIds[0]).to.equal(firstPlanId);
+
+        expect(plans[1].duration).to.equal(THREE_MONTHS_IN_SECONDS);
+        expect(plans[1].apy).to.equal(THREE_MONTHS_APY);
+        expect(planIds[1]).to.equal(secondPlanId);
+
+        expect(plans[2].duration).to.equal(SIX_MONTHS_IN_SECONDS);
+        expect(plans[2].apy).to.equal(SIX_MONTHS_APY);
+        expect(planIds[2]).to.equal(thirdPlanId);
+
+        expect(plans[3].duration).to.equal(TWELVE_MONTHS_IN_SECONDS);
+        expect(plans[3].apy).to.equal(TWELVE_MONTHS_APY);
+        expect(planIds[3]).to.equal(fourthPlanId);
       });
-    });
+  });
 
     describe("getStakingPlansAmount", function() {
       it("Should return the amount of staking plans if 1 plan exists", async function () {
