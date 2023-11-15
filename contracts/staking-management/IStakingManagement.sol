@@ -9,9 +9,9 @@ interface IStakingManagement {
     error StakingPlanDoesNotExist(uint256 planId);
 
     /**
-     * @dev Reverts if the duration is not greater than zero.
+     * @dev Reverts if the duration is not greater than 1 day.
      */
-    error DurationMustBeGreaterThanZero();
+    error DurationMustBeGreaterThanOneDay();
 
     /**
      * @dev Reverts if the APY is not within range (min=1,max=10000).

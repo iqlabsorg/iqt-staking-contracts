@@ -198,8 +198,8 @@ contract Staking is IStaking, Context {
         }
 
         predictedEarningsInTokens = compoundedBalance / precision - amount;
-        predictedEarningsPercentage = (predictedEarningsInTokens > 0 && amount > 0) 
-            ? uint16((predictedEarningsInTokens * Constants.MAX_APY * precision) / amount / precision) 
+        predictedEarningsPercentage = (predictedEarningsInTokens > 0 && amount > 0)
+            ? uint16((predictedEarningsInTokens * Constants.MAX_APY * precision) / amount / precision)
             : 0;
 
         return (predictedEarningsInTokens, predictedEarningsPercentage);

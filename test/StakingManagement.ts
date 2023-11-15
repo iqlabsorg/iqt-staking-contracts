@@ -82,7 +82,7 @@ describe("StakingManagement Contract", function () {
     const SIX_MONTHS_APY = 14_00;
     const TWELVE_MONTHS_APY = 18_00;
     /** Time Frames */
-    const ZERO_SECONDS = 0;
+    const ONE_DAY_IN_SECONDS = 86400;
     const ONE_MONTH_IN_SECONDS = 2629746;
     const THREE_MONTHS_IN_SECONDS = 7889238;
     const SIX_MONTHS_IN_SECONDS = 15778476;
@@ -106,13 +106,18 @@ describe("StakingManagement Contract", function () {
         expect(await stakingManagement.getStakingPlansAmount()).to.equal(1);
       });
 
+      it("Should allow to add a staking plan with the duration 1 day", async function () {
+        await stakingManagement.connect(stakingManager).addStakingPlan(ONE_DAY_IN_SECONDS, ONE_MONTH_APY);
+        expect(await stakingManagement.getStakingPlansAmount()).to.equal(1);
+      });
+
       it('Should not allow to add without STAKING_MANAGER role', async function () {
         await expect(stakingManagement.connect(stranger).addStakingPlan(ONE_MONTH_IN_SECONDS, ONE_MONTH_APY))
           .to.be.revertedWithCustomError(stakingManagement, "CallerIsNotAStakingManager");
       });
 
-      it("Should not allow to add a staking plan with the 0 duration", async function () {
-        await expect(stakingManagement.addStakingPlan(ZERO_SECONDS, ONE_MONTH_APY)).to.be.revertedWithCustomError(stakingManagement, "DurationMustBeGreaterThanZero");
+      it("Should not allow to add a staking plan with the duration less than 1 day", async function () {
+        await expect(stakingManagement.addStakingPlan(ONE_DAY_IN_SECONDS - 1, ONE_MONTH_APY)).to.be.revertedWithCustomError(stakingManagement, "DurationMustBeGreaterThanOneDay");
       });
 
       it("Should not allow to add a staking plan with the 0% APY", async function () {
@@ -150,8 +155,6 @@ describe("StakingManagement Contract", function () {
         await expect(stakingManagement.removeStakingPlan(planId))
           .to.be.revertedWithCustomError(stakingManagement, "StakingPlanDoesNotExist");
       });
-
-
 
       it("Should not allow to remove a staking plan if there are active stakes", async function () {
         let planId: BigNumberish;
