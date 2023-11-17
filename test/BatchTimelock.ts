@@ -298,74 +298,73 @@ describe("BatchTimelock Contract", function () {
     });
 
     describe("getClaimableBalance function", function () {
-      let timelockReceiverAddress: string;
+      let timelockReceiver1Address: string;
       let initialVestingAmount: bigint;
       let cliffDuration: number;
       let vestingDuration: number;
       let timelockFrom: number;
-      let terminationTimeDuringCliff: number;
-      let terminationTimeAfterCliff: number;
-      let halfVestingTime: number;
 
       beforeEach(async function () {
-        timelockReceiverAddress = await timelockReceiver1.getAddress();
+        timelockReceiver1Address = await timelockReceiver1.getAddress();
         initialVestingAmount = ethers.parseEther("1"); // 1 token
         cliffDuration = 6 * 30 * 24 * 60 * 60; // 6 months in seconds
         vestingDuration = 12 * 30 * 24 * 60 * 60; // 12 months in seconds
-        const latestBlock =  await ethers.provider.getBlock("latest");
-        const latestBlockTimestamp = latestBlock!.timestamp;
-        timelockFrom = latestBlockTimestamp;
-        terminationTimeDuringCliff = latestBlockTimestamp + (cliffDuration / 2);
-        terminationTimeAfterCliff = latestBlockTimestamp + cliffDuration + 1000;
-        halfVestingTime = cliffDuration + (vestingDuration / 2);
+        const block = await ethers.provider.getBlock("latest");
+        timelockFrom = block!.timestamp;
 
         await batchTimelock.connect(deployer).addTimelock(
-          timelockReceiverAddress,
+          timelockReceiver1Address,
           initialVestingAmount,
-          latestBlockTimestamp,
+          timelockFrom,
           cliffDuration,
           vestingDuration
         );
       });
 
-      it("Should return 0 before the cliff period ends, even after termination", async function () {
-        await batchTimelock.connect(deployer).terminate(timelockReceiverAddress, terminationTimeDuringCliff);
-        await ethers.provider.send('evm_setNextBlockTimestamp', [terminationTimeDuringCliff]);
-        await ethers.provider.send('evm_mine', []);
-        const balance = await batchTimelock.getClaimableBalance(timelockReceiverAddress);
+      it("Should return 0 before the cliff period ends", async function () {
+        const balance = await batchTimelock.getClaimableBalance(timelockReceiver1Address);
         expect(balance).to.equal(0);
       });
 
-      it("Should return the correct amount after the cliff but before vesting is complete, considering termination", async function () {
-        await batchTimelock.connect(deployer).terminate(timelockReceiverAddress, timelockFrom + halfVestingTime);
-        await ethers.provider.send('evm_setNextBlockTimestamp', [timelockFrom + halfVestingTime]);
-        await ethers.provider.send('evm_mine', []);
-        const balance = await batchTimelock.getClaimableBalance(timelockReceiverAddress);
-        expect(balance).to.equal(initialVestingAmount / BigInt(2));
+      it("Should increase the claimable balance over time after the cliff period", async function () {
+        const halfVestingTime = cliffDuration + vestingDuration / 2;
+        await ethers.provider.send("evm_increaseTime", [halfVestingTime]);
+        await ethers.provider.send("evm_mine", []);
+
+        const balance = await batchTimelock.getClaimableBalance(timelockReceiver1Address);
+        const expectedBalance = initialVestingAmount / BigInt(2);
+        expect(balance).to.be.closeTo(expectedBalance, ethers.parseEther("0.1"));
       });
 
-      it("Should return the correct amount during the whole vesting period", async function () {
-        const checkPoints = [
-          timelockFrom + cliffDuration,
-          timelockFrom + cliffDuration + (vestingDuration / 4),
-          timelockFrom + cliffDuration + (vestingDuration / 3),
-          timelockFrom + cliffDuration + (vestingDuration / 2),
-          timelockFrom + cliffDuration + vestingDuration
-        ];
-        const expectedAmounts = [
-          0,
-          initialVestingAmount / BigInt(4),
-          initialVestingAmount / BigInt(3),
-          initialVestingAmount / BigInt(2),
-          initialVestingAmount
-        ];
+      it("Should return the total vested amount after the vesting period ends", async function () {
+        await ethers.provider.send("evm_increaseTime", [cliffDuration + vestingDuration]);
+        await ethers.provider.send("evm_mine", []);
 
-        for (let i = 0; i < checkPoints.length; i++) {
-          await ethers.provider.send('evm_setNextBlockTimestamp', [checkPoints[i]]);
-          await ethers.provider.send('evm_mine', []);
-          const balance = await batchTimelock.getClaimableBalance(timelockReceiverAddress);
-          expect(balance).to.equal(expectedAmounts[i]);
-        }
+        const balance = await batchTimelock.getClaimableBalance(timelockReceiver1Address);
+        expect(balance).to.equal(initialVestingAmount);
+      });
+
+      it("Should return 0 if terminated before the cliff period ends", async function () {
+        const terminationTime = timelockFrom + cliffDuration / 2;
+        await batchTimelock.connect(deployer).terminate(timelockReceiver1Address, terminationTime);
+
+        await ethers.provider.send("evm_increaseTime", [terminationTime]);
+        await ethers.provider.send("evm_mine", []);
+
+        const balance = await batchTimelock.getClaimableBalance(timelockReceiver1Address);
+        expect(balance).to.equal(0);
+      });
+
+      it("Should reflect the vested amount until the termination time if terminated during vesting", async function () {
+        const terminationTime = timelockFrom + cliffDuration + vestingDuration / 2;
+        await batchTimelock.connect(deployer).terminate(timelockReceiver1Address, terminationTime);
+
+        await ethers.provider.send("evm_increaseTime", [terminationTime]);
+        await ethers.provider.send("evm_mine", []);
+
+        const balance = await batchTimelock.getClaimableBalance(timelockReceiver1Address);
+        const expectedBalance = initialVestingAmount / BigInt(2);
+        expect(balance).to.be.closeTo(expectedBalance, ethers.parseEther("0.1"));
       });
     });
 

@@ -155,7 +155,9 @@ contract BatchTimelock is ITerminateable, IBatchTimelock, IVestingPool, AccessCo
 
         lock.releasedAmount += amount;
 
-        _token.transferFrom(_vestingPool, _msgSender(), amount);
+        bool transferSuccess = _token.transferFrom(_vestingPool, _msgSender(), amount);
+
+        if (!transferSuccess) revert TokenTransferFailed(_vestingPool, _msgSender(), amount);
 
         emit TokensClaimed(_msgSender(), amount);
     }
@@ -174,8 +176,9 @@ contract BatchTimelock is ITerminateable, IBatchTimelock, IVestingPool, AccessCo
 
         uint256 vestedTime;
         if (lock.isTerminated) {
-            vestedTime = lock.terminationFrom > lockFromPlusCliff
-                ? lock.terminationFrom - lockFromPlusCliff
+            uint256 effectiveTerminationTime = lock.terminationFrom < blockTimestampNow ? lock.terminationFrom : blockTimestampNow;
+            vestedTime = effectiveTerminationTime > lockFromPlusCliff
+                ? effectiveTerminationTime - lockFromPlusCliff
                 : 0;
         } else {
             uint256 vestingEnd = lockFromPlusCliff + lock.vestingDuration;
@@ -185,17 +188,10 @@ contract BatchTimelock is ITerminateable, IBatchTimelock, IVestingPool, AccessCo
         }
         uint256 vestedPortion = (lock.totalAmount * vestedTime) / lock.vestingDuration;
 
-        uint256 claimable = vestedPortion > lock.releasedAmount
+        return vestedPortion > lock.releasedAmount
             ? vestedPortion - lock.releasedAmount
             : 0;
-
-        if (lock.isTerminated && blockTimestampNow >= lock.terminationFrom) {
-            return claimable;
-        }
-
-        return claimable;
     }
-
 
     /**
      * @inheritdoc IBatchTimelock

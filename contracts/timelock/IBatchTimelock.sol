@@ -47,11 +47,11 @@ interface IBatchTimelock {
 
     /**
      * @notice Reverts if token transfer failed.
-     * @param tokenPool Address of the token pool.
+     * @param vestingPool Address of the token pool.
      * @param receiver Address of the receiver.
      * @param amount Amount of tokens transferred.
     */
-    error TokenTransferFailed(address tokenPool, address receiver, uint256 amount);
+    error TokenTransferFailed(address vestingPool, address receiver, uint256 amount);
 
     /**
      * @dev Reverts if the caller is not a termination admin.
