@@ -17,12 +17,12 @@ contract BatchTimelock is ITerminateable, IBatchTimelock, IVestingPool, AccessCo
      * @notice Token that will be vested (IQT).
      * @dev Link to IQT repository: https://github.com/iqlabsorg/iqt-eth
      */
-    IERC20 internal _token;
+    IERC20 internal immutable _token;
 
     /**
      * @notice Address of the vesting pool.
      */
-    address internal _vestingPool;
+    address internal immutable _vestingPool;
 
     /**
      * @notice Array of all receiver addresses.
@@ -155,9 +155,9 @@ contract BatchTimelock is ITerminateable, IBatchTimelock, IVestingPool, AccessCo
 
         lock.releasedAmount += amount;
 
-        bool transferSuccess = _token.transferFrom(_vestingPool, _msgSender(), amount);
-
-        if (!transferSuccess) revert TokenTransferFailed(_vestingPool, _msgSender(), amount);
+        if (!_token.transferFrom(_vestingPool, _msgSender(), amount)) {
+            revert ErrorDuringTimelockClaimTransfer(_vestingPool, _msgSender(), amount);
+        }
 
         emit TokensClaimed(_msgSender(), amount);
     }
@@ -186,17 +186,16 @@ contract BatchTimelock is ITerminateable, IBatchTimelock, IVestingPool, AccessCo
                 ? blockTimestampNow - lockFromPlusCliff
                 : lock.vestingDuration;
         }
+
         uint256 vestedPortion = (lock.totalAmount * vestedTime) / lock.vestingDuration;
 
-        return vestedPortion > lock.releasedAmount
-            ? vestedPortion - lock.releasedAmount
-            : 0;
+        return vestedPortion - lock.releasedAmount;
     }
 
     /**
      * @inheritdoc IBatchTimelock
     */
-    function getTimelock(address receiver) public view returns (Timelock memory) {
+    function getTimelock(address receiver) external view returns (Timelock memory) {
         return _timelocks[receiver];
     }
 
@@ -232,14 +231,14 @@ contract BatchTimelock is ITerminateable, IBatchTimelock, IVestingPool, AccessCo
     /**
      * @inheritdoc IVestingPool
      */
-    function getCurrentAllowance() public view returns (uint256) {
+    function getCurrentAllowance() external view returns (uint256) {
         return _token.allowance(_vestingPool, address(this));
     }
 
     /**
      * @inheritdoc IVestingPool
      */
-    function getTotalTokensLocked() public view returns (uint256) {
+    function getTotalTokensLocked() external view returns (uint256) {
         uint256 total = 0;
         uint256 receiverCount = _allReceivers.length(); // Caching the array length outside a loop
         unchecked {
@@ -253,14 +252,14 @@ contract BatchTimelock is ITerminateable, IBatchTimelock, IVestingPool, AccessCo
     /**
      * @inheritdoc IVestingPool
      */
-    function getVestingPoolAddress() public view returns (address) {
+    function getVestingPoolAddress() external view returns (address) {
         return _vestingPool;
     }
 
     /**
      * @inheritdoc IVestingPool
      */
-    function getTokenAddress() public view returns (address) {
+    function getTokenAddress() external view returns (address) {
         return address(_token);
     }
 
@@ -276,15 +275,16 @@ contract BatchTimelock is ITerminateable, IBatchTimelock, IVestingPool, AccessCo
         if (receiver == address(0)) revert InvalidReceiverAddress();
         if (totalAmount == 0) revert InvalidTimelockAmount();
         if (_allReceivers.contains(receiver)) revert ReceiverAlreadyHasATimelock(receiver);
+        if (timelockFrom < 0) revert InvalidTimelockStart();
 
         _timelocks[receiver] = Timelock({
             receiver: receiver,
+            isTerminated: false,
             totalAmount: totalAmount,
             releasedAmount: 0,
             timelockFrom: timelockFrom,
             cliffDuration: cliffDuration,
             vestingDuration: vestingDuration,
-            isTerminated: false,
             terminationFrom: 0
         });
         _allReceivers.add(receiver);

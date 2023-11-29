@@ -39,9 +39,7 @@ const config: HardhatUserConfig = {
   networks: {
     ethereum: {
       url: `https://rpc.ankr.com/eth/${env.parsed?.ANKR_PROJECT_KEY}`,
-      accounts: [],
-      gasPrice: 300_000000000,
-      gasMultiplier: 2,
+      accounts,
       timeout: 40000,
     },
     sepolia: {
@@ -56,7 +54,7 @@ const config: HardhatUserConfig = {
   sourcify: {
     // Disabled by default
     // Doesn't need an API key
-    enabled: true
+    enabled: false
   },
   gasReporter: {
     enabled: env.parsed?.REPORT_GAS !== undefined,

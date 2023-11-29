@@ -35,12 +35,45 @@ interface IStakingManagement {
     error CallerIsNotAStakingManager();
 
     /**
+     * @dev Reverts if there is an error during adding staking plan.
+     * @param duration Duration of the staking plan (in seconds).
+     * @param apy Annual Percentage Rate of the staking plan.
+     */
+    error ErrorDuringAddingStakingPlan(uint256 duration, uint16 apy);
+
+    /**
+     * @dev Reverts if there is an error during updating staking plan.
+     * @param planId Unique ID of the staking plan.
+     */
+    error ErrorDuringRemovingStakingPlan(uint256 planId);
+
+    /**
+     * @dev Emitted when staking limits are changed.
+     * @param minimumStake Minimum stake.
+     * @param maximumStake Maximum stake.
+     */
+
+    event StakingLimitsUpdated(uint256 minimumStake, uint256 maximumStake);
+
+    /**
+     * @dev Emitted when the minimum stake is changed.
+     * @param minimumStake Minimum stake.
+     */
+    event MinimumStakeUpdated(uint256 minimumStake);
+
+    /**
+     * @dev Emitted when the maximum stake is changed.
+     * @param maximumStake Maximum stake.
+     */
+    event MaximumStakeUpdated(uint256 maximumStake);
+
+    /**
      * @dev Emitted when a staking plan is added.
      * @param planId Staking plan ID.
      * @param duration Stake duration (in seconds).
      * @param apy Annual Percentage Yield.
      */
-    event StakingPlanAdded(uint256 planId, uint256 duration, uint16 apy);
+    event StakingPlanAdded(uint256 indexed planId, uint256 duration, uint16 apy);
 
     /**
      * @dev Emitted when a staking plan is updated.
@@ -48,13 +81,13 @@ interface IStakingManagement {
      * @param duration Updated stake duration (in seconds).
      * @param apy Updated Annual Percentage Yield.
      */
-    event StakingPlanUpdated(uint256 planId, uint256 duration, uint16 apy);
+    event StakingPlanUpdated(uint256 indexed planId, uint256 duration, uint16 apy);
 
     /**
      * @dev Emitted when a staking plan is removed.
      * @param planId Removed staking plan ID.
      */
-    event StakingPlanRemoved(uint256 planId);
+    event StakingPlanRemoved(uint256 indexed planId);
 
     /**
      * @dev Staking plan data.
@@ -142,6 +175,11 @@ interface IStakingManagement {
      * @return Staking Plan data structs.
      */
     function getStakingPlans(uint256 offset, uint256 limit) external view returns (StakingPlan[] memory, uint256[] memory);
+
+    /**
+     * @dev Get the latest staking plan ID.
+     */
+    function getLatestStakingPlanId() external view returns (uint256);
 
     /**
      * @dev Get amount of staking plans.

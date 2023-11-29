@@ -15,12 +15,12 @@ contract Staking is IStaking, Context {
     /**
      * @dev IStakingManagement instance
      */
-    IStakingManagement internal _stakingManagement;
+    IStakingManagement internal immutable _stakingManagement;
 
     /**
      * @dev Staking token (IQT).
      */
-    IERC20 internal _stakingToken;
+    IERC20 internal immutable _stakingToken;
 
     /**
      * @dev Address of the staking pool.
@@ -90,7 +90,6 @@ contract Staking is IStaking, Context {
         (estimatedEarningsInTokens, ) = estimateStakeEarnings(amount, stakingPlan);
 
         _checkStakingPoolBalance(estimatedEarningsInTokens);
-        _checkAllowance(amount);
 
         uint256 stakeId = _createStakeRecord(amount, stakingPlan);
 
@@ -108,25 +107,37 @@ contract Staking is IStaking, Context {
         Stake storage stakeRecord = _stakes[stakeId];
         uint256 currentTimestamp = block.timestamp;
 
+        uint256 withdrawalAmount;
+
         if (stakeRecord.withdrawn) revert StakeAlreadyWithdrawn(stakeId);
         if (currentTimestamp < stakeRecord.endTimestamp) {
             if (!_stakingManagement.isWithdrawEnabled()) {
                 revert EarlyWithdrawalNotAllowed(currentTimestamp, stakeRecord.endTimestamp);
             }
-            uint256 withdrawalAmount = stakeRecord.amount;
+            withdrawalAmount = stakeRecord.amount;
             stakeRecord.earlyWithdrawal = true;
             stakeRecord.withdrawn = true;
             stakeRecord.endTimestamp = currentTimestamp;
             stakeRecord.earningsInTokens = 0;
             stakeRecord.earningsPercentage = 0;
-            _stakingToken.transferFrom(_stakingPool, _msgSender(), withdrawalAmount);
         } else {
-            (stakeRecord.earningsInTokens, stakeRecord.earningsPercentage) = calculateStakeEarnings(stakeId);
+            (stakeRecord.earningsInTokens, stakeRecord.earningsPercentage) = _calculateStakeEarnings(stakeId);
             stakeRecord.withdrawn = true;
-            _stakingToken.transferFrom(_stakingPool, _msgSender(), stakeRecord.amount + stakeRecord.earningsInTokens);
+            withdrawalAmount = stakeRecord.amount + stakeRecord.earningsInTokens;
         }
 
-        _stakesPerPlan[stakeRecord.stakingPlanId].remove(stakeId);
+        // check that withdrawable amount successfully transferred to staker
+        if (!_stakingToken.transferFrom(_stakingPool, _msgSender(), withdrawalAmount)) {
+            revert ErrorDuringWithdrawTransfer(_stakingPool, _msgSender(),  withdrawalAmount);
+        }
+
+        // subtract withdrawal amount from staking pool size
+        _stakingPoolSize -= withdrawalAmount;
+
+        // remove stake from stakes per plan counter
+        if (!_stakesPerPlan[stakeRecord.stakingPlanId].remove(stakeId)) {
+            revert ErrorDuringRemovingStakeFromPlan(stakeId, stakeRecord.stakingPlanId);
+        }
 
         emit StakeWithdrawn(_msgSender(), stakeId);
     }
@@ -143,38 +154,8 @@ contract Staking is IStaking, Context {
      */
     function calculateStakeEarnings(
         uint256 stakeId
-    ) public view onlyExistingStake(stakeId) returns (uint256 earningsInTokens, uint16 earningsPercentage) {
-        Stake memory stakeRecord = _stakes[stakeId];
-        IStakingManagement.StakingPlan memory plan = _stakingManagement.getStakingPlan(stakeRecord.stakingPlanId);
-
-        if (block.timestamp < stakeRecord.startTimestamp) return (0, 0);
-
-        uint256 compoundingFrequency = Constants.DAYS_IN_YEAR;
-        uint256 precision = Constants.DECIMALS_PRECISION;
-        uint256 dailyRate = (plan.apy * precision) / Constants.MAX_APY / compoundingFrequency;
-        uint256 compoundingPeriods = (block.timestamp < stakeRecord.endTimestamp ?
-            block.timestamp : stakeRecord.endTimestamp)
-            - stakeRecord.startTimestamp;
-        uint256 totalCompoundingPeriods = compoundingPeriods / Constants.SECONDS_IN_DAY;
-        uint256 compoundedBalance = stakeRecord.amount * precision;
-
-        unchecked {
-            for (uint256 i = 0; i < totalCompoundingPeriods; ++i) {
-                compoundedBalance += (compoundedBalance * dailyRate / precision);
-            }
-        }
-        earningsInTokens = compoundedBalance / precision - stakeRecord.amount;
-        if (block.timestamp > stakeRecord.endTimestamp) {
-            earningsInTokens = earningsInTokens * (stakeRecord.endTimestamp - stakeRecord.startTimestamp) / compoundingPeriods;
-        }
-
-        if (earningsInTokens > 0 && stakeRecord.amount > 0) {
-            earningsPercentage = uint16((earningsInTokens * Constants.MAX_APY * precision) / stakeRecord.amount / precision);
-        } else {
-            earningsPercentage = 0;
-        }
-
-        return (earningsInTokens, earningsPercentage);
+    ) public view onlyExistingStake(stakeId) returns (uint256 earningsInTokens, uint256 earningsPercentage) {
+        (earningsInTokens, earningsPercentage) = _calculateStakeEarnings(stakeId);
     }
 
     /**
@@ -183,13 +164,13 @@ contract Staking is IStaking, Context {
     function estimateStakeEarnings(
         uint256 amount,
         uint256 stakingPlanId
-    ) public view returns (uint256 predictedEarningsInTokens, uint16 predictedEarningsPercentage) {
+    ) public view returns (uint256 predictedEarningsInTokens, uint256 predictedEarningsPercentage) {
         _stakingManagement.checkStakingPlanExists(stakingPlanId);
         IStakingManagement.StakingPlan memory plan = _stakingManagement.getStakingPlan(stakingPlanId);
 
         uint256 precision = Constants.DECIMALS_PRECISION;
 
-        uint256 dailyRate = (plan.apy * precision) / Constants.MAX_APY / Constants.DAYS_IN_YEAR;
+        uint256 dailyRate = (plan.apy * precision) / Constants.HUNDRED_PERCENT / Constants.DAYS_IN_YEAR;
         uint256 compoundingPeriods = plan.duration / Constants.SECONDS_IN_DAY;
 
         uint256 compoundedBalance = amount * precision;
@@ -199,7 +180,7 @@ contract Staking is IStaking, Context {
 
         predictedEarningsInTokens = compoundedBalance / precision - amount;
         predictedEarningsPercentage = (predictedEarningsInTokens > 0 && amount > 0)
-            ? uint16((predictedEarningsInTokens * Constants.MAX_APY * precision) / amount / precision)
+            ? (predictedEarningsInTokens * Constants.HUNDRED_PERCENT * precision) / amount / precision
             : 0;
 
         return (predictedEarningsInTokens, predictedEarningsPercentage);
@@ -307,13 +288,13 @@ contract Staking is IStaking, Context {
      */
     function calculateTotalEarnings(
         address staker
-    ) external view returns (uint256 totalEarningsInTokens, uint16 totalEarningsPercentage) {
+    ) external view returns (uint256 totalEarningsInTokens, uint256 totalEarningsPercentage) {
         uint256[] memory stakeIds = _userStakes[staker].values();
         totalEarningsInTokens = 0;
         uint256 totalWeightedPercentage = 0;
 
         for (uint256 i = 0; i < stakeIds.length; i++) {
-            (uint256 earningsInTokens, uint16 earningsPercentage) = calculateStakeEarnings(stakeIds[i]);
+            (uint256 earningsInTokens, uint256 earningsPercentage) = _calculateStakeEarnings(stakeIds[i]);
             totalEarningsInTokens += earningsInTokens;
 
             // Weight the percentage by the earnings in tokens and accumulate
@@ -322,7 +303,7 @@ contract Staking is IStaking, Context {
 
         if (totalEarningsInTokens > 0) {
             // Calculate the total earnings percentage as a weighted average
-            totalEarningsPercentage = uint16((totalWeightedPercentage * 1e4) / totalEarningsInTokens);
+            totalEarningsPercentage = (totalWeightedPercentage * 1e4) / totalEarningsInTokens;
         } else {
             totalEarningsPercentage = 0;
         }
@@ -427,14 +408,42 @@ contract Staking is IStaking, Context {
     }
 
     /**
-     * @dev Checks the allowance to the staking pool.
-     * @param amount Amount of tokens to stake.
+     * @dev Calculates the stake earnings in tokens and percentages.
+     * @param stakeId Unique ID of the stake.
+     * @return earningsInTokens Earnings in tokens.
+     * @return earningsPercentage Earnings in percentage.
     */
-    function _checkAllowance(uint256 amount) internal view {
-        uint256 allowanceToStaking = _stakingToken.allowance(_msgSender(), address(this));
-        if (allowanceToStaking < amount) {
-            revert InsufficientAllowance(amount, allowanceToStaking);
+    function _calculateStakeEarnings(
+        uint256 stakeId
+    ) public view onlyExistingStake(stakeId) returns (uint256 earningsInTokens, uint256 earningsPercentage) {
+        Stake memory stakeRecord = _stakes[stakeId];
+        IStakingManagement.StakingPlan memory plan = _stakingManagement.getStakingPlan(stakeRecord.stakingPlanId);
+
+        if (block.timestamp < stakeRecord.startTimestamp) return (0, 0);
+
+        uint256 compoundingFrequency = Constants.DAYS_IN_YEAR;
+        uint256 precision = Constants.DECIMALS_PRECISION;
+        uint256 dailyRate = (plan.apy * precision) / Constants.HUNDRED_PERCENT / compoundingFrequency;
+        uint256 compoundingPeriods = (block.timestamp < stakeRecord.endTimestamp ?
+            block.timestamp : stakeRecord.endTimestamp)
+            - stakeRecord.startTimestamp;
+        uint256 totalCompoundingPeriods = compoundingPeriods / Constants.SECONDS_IN_DAY;
+        uint256 compoundedBalance = stakeRecord.amount * precision;
+
+        unchecked {
+            for (uint256 i = 0; i < totalCompoundingPeriods; ++i) {
+                compoundedBalance += (compoundedBalance * dailyRate / precision);
+            }
         }
+        earningsInTokens = compoundedBalance / precision - stakeRecord.amount;
+
+        if (earningsInTokens > 0 && stakeRecord.amount > 0) {
+            earningsPercentage = (earningsInTokens * Constants.HUNDRED_PERCENT * precision) / stakeRecord.amount / precision;
+        } else {
+            earningsPercentage = 0;
+        }
+
+        return (earningsInTokens, earningsPercentage);
     }
 
     /**
@@ -447,19 +456,28 @@ contract Staking is IStaking, Context {
         uint256 stakingPlanDuration = _stakingManagement.getStakingPlan(stakingPlan).duration;
         _stakes[stakeId] = Stake({
             staker: _msgSender(),
+            withdrawn: false,
             amount: amount,
             stakingPlanId: stakingPlan,
             startTimestamp: block.timestamp,
             endTimestamp: block.timestamp + stakingPlanDuration,
             earningsInTokens: 0,
             earningsPercentage: 0,
-            earlyWithdrawal: false,
-            withdrawn: false
+            earlyWithdrawal: false
         });
 
-        _userStakes[_msgSender()].add(stakeId);
-        _allStakeIds.add(stakeId);
-        _stakesPerPlan[stakingPlan].add(stakeId);
+        // check that stake successfully added to user stakes
+        if(!_userStakes[_msgSender()].add(stakeId)) {
+            revert ErrorDuringAddingUserStake(stakeId);
+        }
+        // check that stake successfully added to all stakes
+        if(!_allStakeIds.add(stakeId)) {
+            revert ErrorDuringAddingStake(stakeId);
+        }
+        // check that stake successfully added to stakes per plan
+        if(!_stakesPerPlan[stakingPlan].add(stakeId)) {
+            revert ErrorDuringAddingStakeToPlan(stakeId, stakingPlan);
+        }
 
         return stakeId;
     }
@@ -470,7 +488,11 @@ contract Staking is IStaking, Context {
      * @param estimatedEarningsInTokens Estimated earnings in tokens.
     */
     function _transferToStakingPool(uint256 amount, uint256 estimatedEarningsInTokens) internal {
-        _stakingToken.transferFrom(_msgSender(), _stakingPool, amount);
+        // check that stake amount successfully transferred to staking pool
+        if (!_stakingToken.transferFrom(_msgSender(), _stakingPool, amount)) {
+            revert ErrorDuringStakeTransfer(_msgSender(), _stakingPool, amount);
+        }
+
         unchecked {
             _stakingPoolSize += amount;
             _stakingPoolSize += estimatedEarningsInTokens;

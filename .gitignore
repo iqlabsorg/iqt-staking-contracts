@@ -10,6 +10,9 @@ lerna-debug.log*
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
+# macOS cache
+.DS_Store
+
 # Runtime data
 pids
 *.pid
@@ -136,3 +139,9 @@ coverage/
 typechain/
 cache/
 deployments/
+
+# calculation csv files
+employee_rewards.csv
+myst_calculated.csv
+niox_calculated.csv
+prq_calculated.csv

@@ -343,8 +343,8 @@ describe("Staking Contract", function () {
 
       it("should revert when allowance is not given to staking contract", async function () {
         await stakingToken.connect(staker1).approve(staking.target, 0);
-        await expect(staking.connect(staker1).stake(QUARTER_STAKING_AMOUNT, oneMonthStakingPlanId)).to.be.revertedWithCustomError(
-          staking, "InsufficientAllowance"
+        await expect(staking.connect(staker1).stake(QUARTER_STAKING_AMOUNT, oneMonthStakingPlanId)).to.be.revertedWith(
+          "ERC20: insufficient allowance"
         );
       });
 
@@ -1064,6 +1064,57 @@ describe("Staking Contract", function () {
         expect(stakingPoolSize).to.be.eq(expectedPoolSize);
       });
 
+      it("should return the correct pool size after a couple of stakes and withdrawals", async function () {
+        let stakingPoolSize = await staking.getStakingPoolSize();
+
+        const stake1EsimatedEarnings = await staking.estimateStakeEarnings(QUARTER_STAKING_AMOUNT, oneMonthStakingPlanId);
+        const stake2EsimatedEarnings = await staking.estimateStakeEarnings(QUARTER_STAKING_AMOUNT, threeMonthsStakingPlanId);
+        const stake3EsimatedEarnings = await staking.estimateStakeEarnings(QUARTER_STAKING_AMOUNT, sixMonthsStakingPlanId);
+        const stake4EsimatedEarnings = await staking.estimateStakeEarnings(QUARTER_STAKING_AMOUNT, twelveMonthsStakingPlanId);
+
+        const stakeId1 = await staking.connect(staker1).stake.staticCall(QUARTER_STAKING_AMOUNT, oneMonthStakingPlanId);
+        await staking.connect(staker1).stake(QUARTER_STAKING_AMOUNT, oneMonthStakingPlanId);
+        const stakeId2 = await staking.connect(staker1).stake.staticCall(QUARTER_STAKING_AMOUNT, threeMonthsStakingPlanId);
+        await staking.connect(staker1).stake(QUARTER_STAKING_AMOUNT, threeMonthsStakingPlanId);
+        const stakeId3 = await staking.connect(staker1).stake.staticCall(QUARTER_STAKING_AMOUNT, sixMonthsStakingPlanId);
+        await staking.connect(staker1).stake(QUARTER_STAKING_AMOUNT, sixMonthsStakingPlanId);
+        const stakeId4 = await staking.connect(staker1).stake.staticCall(QUARTER_STAKING_AMOUNT, twelveMonthsStakingPlanId);
+        await staking.connect(staker1).stake(QUARTER_STAKING_AMOUNT, twelveMonthsStakingPlanId);
+
+        const allEarnings = stake1EsimatedEarnings.predictedEarningsInTokens +
+          stake2EsimatedEarnings.predictedEarningsInTokens +
+          stake3EsimatedEarnings.predictedEarningsInTokens +
+          stake4EsimatedEarnings.predictedEarningsInTokens;
+        const expectedPoolSize = STAKING_AMOUNT + allEarnings;
+        stakingPoolSize = await staking.getStakingPoolSize();
+
+        expect(stakingPoolSize).to.be.eq(expectedPoolSize);
+
+        await ethers.provider.send("evm_increaseTime", [TWELVE_MONTHS_IN_SECONDS]);
+        await ethers.provider.send("evm_mine");
+
+        await staking.connect(staker1).withdraw(stakeId1);
+        stakingPoolSize = await staking.getStakingPoolSize();
+        const stake1AmountWithEarnings = QUARTER_STAKING_AMOUNT + stake1EsimatedEarnings.predictedEarningsInTokens;
+        expect(stakingPoolSize).to.be.eq(expectedPoolSize - stake1AmountWithEarnings);
+
+        await staking.connect(staker1).withdraw(stakeId2);
+        stakingPoolSize = await staking.getStakingPoolSize();
+        const stake2AmountWithEarnings = QUARTER_STAKING_AMOUNT + stake2EsimatedEarnings.predictedEarningsInTokens;
+        expect(stakingPoolSize).to.be.eq(expectedPoolSize - stake1AmountWithEarnings - stake2AmountWithEarnings);
+
+        await staking.connect(staker1).withdraw(stakeId3);
+        stakingPoolSize = await staking.getStakingPoolSize();
+        const stake3AmountWithEarnings = QUARTER_STAKING_AMOUNT + stake3EsimatedEarnings.predictedEarningsInTokens;
+        expect(stakingPoolSize).to.be.eq(expectedPoolSize - stake1AmountWithEarnings - stake2AmountWithEarnings - stake3AmountWithEarnings);
+
+        await staking.connect(staker1).withdraw(stakeId4);
+        stakingPoolSize = await staking.getStakingPoolSize();
+        const stake4AmountWithEarnings = QUARTER_STAKING_AMOUNT + stake4EsimatedEarnings.predictedEarningsInTokens;
+        expect(stakingPoolSize).to.be.eq(expectedPoolSize - stake1AmountWithEarnings - stake2AmountWithEarnings - stake3AmountWithEarnings - stake4AmountWithEarnings);
+        expect(stakingPoolSize).to.be.eq(0);
+      });
+
       it("should return zero if no stakes", async function () {
         const stakingPoolSize = await staking.getStakingPoolSize();
         expect(stakingPoolSize).to.be.eq(0);
@@ -1087,9 +1138,9 @@ export type StakeData = {
 export function calculateExpectedEarnings(stake: StakeData): ExpectedEarningsResult {
   const SECONDS_IN_DAY = 24 * 60 * 60;
   const DAYS_IN_YEAR = 365;
-  const MAX_APY = 100_00; // Basis points for APY
+  const HUNDRED_PERCENT = 100_00; // Basis points for APY
   const PRECISION_FACTOR = BigInt(1e18);
-  const dailyRate = (stake.apy * PRECISION_FACTOR) / BigInt(MAX_APY) / BigInt(DAYS_IN_YEAR);
+  const dailyRate = (stake.apy * PRECISION_FACTOR) / BigInt(HUNDRED_PERCENT) / BigInt(DAYS_IN_YEAR);
   const totalCompoundingPeriods = stake.stakingPeriod / BigInt(SECONDS_IN_DAY);
 
   let compoundedBalance = stake.stakingAmount * PRECISION_FACTOR;
@@ -1098,7 +1149,7 @@ export function calculateExpectedEarnings(stake: StakeData): ExpectedEarningsRes
   }
 
   const earningsInTokens = (compoundedBalance / PRECISION_FACTOR) - stake.stakingAmount;
-  const earningsPercentage = (earningsInTokens * BigInt(MAX_APY) * PRECISION_FACTOR) / (stake.stakingAmount * PRECISION_FACTOR) * BigInt(10000);
+  const earningsPercentage = (earningsInTokens * BigInt(HUNDRED_PERCENT) * PRECISION_FACTOR) / (stake.stakingAmount * PRECISION_FACTOR) * BigInt(10000);
 
   return {
     expectedEarningsInTokens: earningsInTokens,

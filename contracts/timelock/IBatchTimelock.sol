@@ -15,9 +15,9 @@ interface IBatchTimelock {
     error CliffPeriodNotEnded(uint256 timeNow, uint256 cliffEndsAt);
 
     /**
-     * @notice Reverts if vesting period has not started.
+     * @notice Reverts when adding timelock that has 0 timelockFrom.
      */
-    error ZeroAllocation();
+    error InvalidTimelockStart();
 
     /**
      * @notice Reverts if empty receivers array is passed.
@@ -51,7 +51,7 @@ interface IBatchTimelock {
      * @param receiver Address of the receiver.
      * @param amount Amount of tokens transferred.
     */
-    error TokenTransferFailed(address vestingPool, address receiver, uint256 amount);
+    error ErrorDuringTimelockClaimTransfer(address vestingPool, address receiver, uint256 amount);
 
     /**
      * @dev Reverts if the caller is not a termination admin.
@@ -92,13 +92,13 @@ interface IBatchTimelock {
      */
     struct Timelock {
         address receiver;
+        bool isTerminated;
         uint256 totalAmount;
         uint256 releasedAmount;
         uint256 timelockFrom;
         uint256 cliffDuration;
         uint256 vestingDuration;
         uint256 terminationFrom;
-        bool isTerminated;
     }
 
     /**

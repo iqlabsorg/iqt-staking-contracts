@@ -16,7 +16,7 @@ contract StakingManagement is IStakingManagement, AccessControl {
     /**
      * @dev Staking token (IQT).
      */
-    IERC20 internal stakingToken;
+    IERC20 internal immutable stakingToken;
 
     /**
      * @dev IStakingManagement instance
@@ -29,9 +29,15 @@ contract StakingManagement is IStakingManagement, AccessControl {
     mapping(uint256 => StakingPlan) internal _stakingPlans;
 
     /**
+     * @dev Staking plan ID counter.
+     * Starts at 0 and being defined in the constructor, then being increment in addStakingPlan().
+     */
+    uint256 internal _latestStakingPlanId;
+
+    /**
      * @dev Staking plan IDs.
      */
-    EnumerableSet.UintSet private _stakingPlanIds;
+    EnumerableSet.UintSet internal _stakingPlanIds;
 
     /**
      * @dev Whether or not withdrawals are enabled.
@@ -62,6 +68,7 @@ contract StakingManagement is IStakingManagement, AccessControl {
     constructor(address _stakingToken) {
         stakingToken = IERC20(_stakingToken);
         _withdrawalEnabled = false;
+        _latestStakingPlanId = 0;
 
         _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
         _setupRole(StakingRoles.STAKING_MANAGER_ROLE, _msgSender());
@@ -72,12 +79,16 @@ contract StakingManagement is IStakingManagement, AccessControl {
      */
     function addStakingPlan(uint256 duration, uint16 apy) external override onlyStakingManager returns (uint256) {
         if (duration < Constants.SECONDS_IN_DAY) revert DurationMustBeGreaterThanOneDay();
-        if (apy == 0 || apy > Constants.MAX_APY) revert APYMustBeWithinRange();
+        if (apy == 0 || apy > Constants.HUNDRED_PERCENT) revert APYMustBeWithinRange();
 
         unchecked {
-            uint256 planId = _stakingPlanIds.length() + 1;
+            _latestStakingPlanId++;
+            uint256 planId = _latestStakingPlanId;
             _stakingPlans[planId] = StakingPlan({duration: duration, apy: apy});
-            _stakingPlanIds.add(planId);
+            // check that plan successfully added
+            if(!_stakingPlanIds.add(planId)) {
+                revert ErrorDuringAddingStakingPlan(duration, apy);
+            }
 
             return planId;
         }
@@ -89,7 +100,10 @@ contract StakingManagement is IStakingManagement, AccessControl {
     function removeStakingPlan(uint256 planId) external override onlyStakingManager {
         _checkStakingPlanExists(planId);
         _checkNoActiveStakes(planId);
-        _stakingPlanIds.remove(planId);
+        // check that plan successfully removed
+        if(!_stakingPlanIds.remove(planId)) {
+            revert ErrorDuringRemovingStakingPlan(planId);
+        }
         delete _stakingPlans[planId];
     }
 
@@ -114,6 +128,8 @@ contract StakingManagement is IStakingManagement, AccessControl {
         if (minimumStake > maximumStake) revert MinimumStakeMustBeLessThanOrEqualToMaximumStake();
         _minimumStake = minimumStake;
         _maximumStake = maximumStake;
+
+        emit StakingLimitsUpdated(minimumStake, maximumStake);
     }
 
     /**
@@ -122,6 +138,8 @@ contract StakingManagement is IStakingManagement, AccessControl {
     function setMininumStake(uint256 minimumStake) external override onlyStakingManager {
         if (minimumStake > _maximumStake) revert MinimumStakeMustBeLessThanOrEqualToMaximumStake();
         _minimumStake = minimumStake;
+
+        emit MinimumStakeUpdated(minimumStake);
     }
 
     /**
@@ -130,6 +148,8 @@ contract StakingManagement is IStakingManagement, AccessControl {
     function setMaximumStake(uint256 maximumStake) external override onlyStakingManager {
         if (_minimumStake > maximumStake) revert MinimumStakeMustBeLessThanOrEqualToMaximumStake();
         _maximumStake = maximumStake;
+
+        emit MaximumStakeUpdated(maximumStake);
     }
 
     /**
@@ -184,6 +204,13 @@ contract StakingManagement is IStakingManagement, AccessControl {
             }
         }
         return (plans, planIds);
+    }
+
+    /**
+     * @inheritdoc IStakingManagement
+     */
+    function getLatestStakingPlanId() external view override returns (uint256) {
+        return _latestStakingPlanId;
     }
 
     /**

@@ -111,6 +111,16 @@ describe("StakingManagement Contract", function () {
         expect(await stakingManagement.getStakingPlansAmount()).to.equal(1);
       });
 
+      it("Should not repeat staking plan ID after removing a staking plan", async function () {
+        const initialPlanId = await stakingManagement.addStakingPlan.staticCall(ONE_MONTH_IN_SECONDS, ONE_MONTH_APY);
+        await stakingManagement.connect(stakingManager).addStakingPlan(ONE_MONTH_IN_SECONDS, ONE_MONTH_APY);
+        await stakingManagement.connect(stakingManager).removeStakingPlan(initialPlanId);
+        const newStakingPlanId = await stakingManagement.addStakingPlan.staticCall(ONE_MONTH_IN_SECONDS, ONE_MONTH_APY);
+        await stakingManagement.connect(stakingManager).addStakingPlan(ONE_MONTH_IN_SECONDS, ONE_MONTH_APY);
+        expect(await stakingManagement.getStakingPlansAmount()).to.equal(1);
+        expect(initialPlanId).to.not.equal(newStakingPlanId);
+      });
+
       it('Should not allow to add without STAKING_MANAGER role', async function () {
         await expect(stakingManagement.connect(stranger).addStakingPlan(ONE_MONTH_IN_SECONDS, ONE_MONTH_APY))
           .to.be.revertedWithCustomError(stakingManagement, "CallerIsNotAStakingManager");
@@ -286,6 +296,12 @@ describe("StakingManagement Contract", function () {
         expect(result[1]).to.equal(MAX_STAKING_AMOUNT);
       });
 
+      it("Should emit an event when setting the staking limits", async function () {
+        await expect(stakingManagement.setStakingLimits(MIN_STAKING_AMOUNT, MAX_STAKING_AMOUNT))
+          .to.emit(stakingManagement, "StakingLimitsUpdated")
+          .withArgs(MIN_STAKING_AMOUNT, MAX_STAKING_AMOUNT);
+      });
+
       it("Should not allow to set the staking limits if not an owner", async function () {
         await expect(stakingManagement.connect(stranger).setStakingLimits(MIN_STAKING_AMOUNT, MAX_STAKING_AMOUNT))
           .to.be.revertedWithCustomError(stakingManagement, "CallerIsNotAStakingManager");
@@ -310,6 +326,12 @@ describe("StakingManagement Contract", function () {
         expect(await stakingManagement.getMinimumStake()).to.equal(MIN_STAKING_AMOUNT);
       });
 
+      it("Should emit an event when setting the minimum staking amount", async function () {
+        await expect(stakingManagement.setMininumStake(MIN_STAKING_AMOUNT))
+          .to.emit(stakingManagement, "MinimumStakeUpdated")
+          .withArgs(MIN_STAKING_AMOUNT);
+      });
+
       it("Should not allow to set the minimum staking amount if not an owner", async function () {
         await expect(stakingManagement.connect(stranger).setMininumStake(MIN_STAKING_AMOUNT))
           .to.be.revertedWithCustomError(stakingManagement, "CallerIsNotAStakingManager");
@@ -332,6 +354,12 @@ describe("StakingManagement Contract", function () {
       it("Should set the maximum staking amount", async function () {
         await stakingManagement.setMaximumStake(MAX_STAKING_AMOUNT);
         expect(await stakingManagement.getMaximumStake()).to.equal(MAX_STAKING_AMOUNT);
+      });
+
+      it("Should emit an event when setting the maximum staking amount", async function () {
+        await expect(stakingManagement.setMaximumStake(MAX_STAKING_AMOUNT))
+          .to.emit(stakingManagement, "MaximumStakeUpdated")
+          .withArgs(MAX_STAKING_AMOUNT);
       });
 
       it("Should not allow to set the maximum staking amount if not an owner", async function () {
@@ -436,7 +464,27 @@ describe("StakingManagement Contract", function () {
         expect(plans[3].apy).to.equal(TWELVE_MONTHS_APY);
         expect(planIds[3]).to.equal(fourthPlanId);
       });
-  });
+    });
+
+    describe("getLatestStakingPlanId", function() {
+      it("Should return the correct latest staking ID if no plans exists", async function () {
+        expect(await stakingManagement.getLatestStakingPlanId()).to.equal(0);
+      });
+
+      it("Should return the correct latest staking ID if 1 plan exists", async function () {
+        await stakingManagement.addStakingPlan(ONE_MONTH_IN_SECONDS, ONE_MONTH_APY);
+        expect(await stakingManagement.getLatestStakingPlanId()).to.equal(1);
+      });
+
+      it("Should return the correct latest staking ID if many plans created and removed", async function () {
+        await stakingManagement.addStakingPlan(ONE_MONTH_IN_SECONDS, ONE_MONTH_APY);
+        await stakingManagement.addStakingPlan(THREE_MONTHS_IN_SECONDS, THREE_MONTHS_APY);
+        await stakingManagement.addStakingPlan(SIX_MONTHS_IN_SECONDS, SIX_MONTHS_APY);
+        await stakingManagement.addStakingPlan(TWELVE_MONTHS_IN_SECONDS, TWELVE_MONTHS_APY);
+        await stakingManagement.removeStakingPlan(1);
+        expect(await stakingManagement.getLatestStakingPlanId()).to.equal(4);
+      });
+    });
 
     describe("getStakingPlansAmount", function() {
       it("Should return the amount of staking plans if 1 plan exists", async function () {
