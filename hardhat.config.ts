@@ -5,6 +5,7 @@ import '@nomicfoundation/hardhat-chai-matchers';
 import '@nomicfoundation/hardhat-ethers';
 import '@nomicfoundation/hardhat-verify';
 import '@nomicfoundation/hardhat-toolbox';
+import "hardhat-gas-reporter"
 import * as dotenv from 'dotenv';
 
 const env = dotenv.config();
@@ -13,14 +14,10 @@ import './tasks/deploy-iqt-mock';
 import './tasks/deploy-batch-timelock';
 import './tasks/deploy-staking';
 import './tasks/deploy-staking-management';
+import './tasks/batch-timelock';
 
 const DEPLOYMENT_PRIVATE_KEY = env.parsed?.DEPLOYMENT_PRIVATE_KEY;
-const ANKR_PROJECT_KEY = env.parsed?.ANKR_PROJECT_KEY;
-const ETHERSCAN_API_KEY_POLYGON = env.parsed?.ETHERSCAN_API_KEY_POLYGON;
-
 const accounts = DEPLOYMENT_PRIVATE_KEY ? [DEPLOYMENT_PRIVATE_KEY] : [];
-const ankrProjectKey = ANKR_PROJECT_KEY ? ANKR_PROJECT_KEY : '';
-const etherscanApiKeyPolygon = ETHERSCAN_API_KEY_POLYGON ? ETHERSCAN_API_KEY_POLYGON : '';
 
 const config: HardhatUserConfig = {
   solidity: {
@@ -32,31 +29,35 @@ const config: HardhatUserConfig = {
       },
     },
   },
+  gasReporter: {
+    enabled: Boolean(process.env.REPORT_GAS),
+    currency: 'USD',
+  },
   namedAccounts: {
     deployer: 0,
   },
   networks: {
     ethereum: {
-      url: `https://rpc.ankr.com/eth/${process.env.ANKR_PROJECT_KEY}`,
-      gasPrice: 300_000000000,
-      gasMultiplier: 2,
+      url: `https://rpc.ankr.com/eth/${env.parsed?.ANKR_PROJECT_KEY}`,
+      accounts,
       timeout: 40000,
     },
-    ethereumGoerli: {
-      url: `https://rpc.ankr.com/eth_goerli/${process.env.ANKR_PROJECT_KEY}`,
+    sepolia: {
+      url: `https://rpc.ankr.com/eth_sepolia/${env.parsed?.ANKR_PROJECT_KEY}`,
+      accounts,
       timeout: 40000,
     },
   },
   etherscan: {
-    apiKey: {
-      polygon: etherscanApiKeyPolygon,
-      polygonMumbai: etherscanApiKeyPolygon,
-      bscTestnet: 'TTWE1EGN7G8VFWP78UJXGBAFJMV9XIHRA6',
-    },
-    customChains: [],
+    apiKey: env.parsed?.ETHERSCAN_API_KEY
+  },
+  sourcify: {
+    // Disabled by default
+    // Doesn't need an API key
+    enabled: false
   },
   gasReporter: {
-    enabled: process.env.REPORT_GAS !== undefined,
+    enabled: env.parsed?.REPORT_GAS !== undefined,
     currency: 'USD',
   },
   paths: {

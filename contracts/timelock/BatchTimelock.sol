@@ -2,26 +2,27 @@
 pragma solidity ^0.8.19;
 
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
 
+import {TimelockRoles} from "../library/TimelockRoles.sol";
 import "./ITerminateable.sol";
 import "./IBatchTimelock.sol";
 import "./IVestingPool.sol";
 
-contract BatchTimelock is Ownable, ITerminateable, IBatchTimelock, IVestingPool {
+contract BatchTimelock is ITerminateable, IBatchTimelock, IVestingPool, AccessControl {
     using EnumerableSet for EnumerableSet.AddressSet;
 
     /**
      * @notice Token that will be vested (IQT).
      * @dev Link to IQT repository: https://github.com/iqlabsorg/iqt-eth
      */
-    IERC20 internal _token;
+    IERC20 internal immutable _token;
 
     /**
      * @notice Address of the vesting pool.
      */
-    address internal _vestingPool;
+    address internal immutable _vestingPool;
 
     /**
      * @notice Array of all receiver addresses.
@@ -43,18 +44,36 @@ contract BatchTimelock is Ownable, ITerminateable, IBatchTimelock, IVestingPool 
         _;
     }
 
+    modifier onlyTimelockCreator() {
+        if (!hasRole(TimelockRoles.TIMELOCK_CREATOR_ROLE, _msgSender()) && !hasRole(DEFAULT_ADMIN_ROLE, _msgSender())) {
+            revert CallerIsNotATimelockCreator();
+        }
+        _;
+    }
+
+    modifier onlyTerminationAdmin() {
+        if (!hasRole(TimelockRoles.TERMINATION_ADMIN_ROLE, _msgSender()) && !hasRole(DEFAULT_ADMIN_ROLE, _msgSender())) {
+            revert CallerIsNotATerminationAdmin();
+        }
+        _;
+    }
+
     /**
      * @notice Reverts if the timelock does not exist.
     */
     constructor(IERC20 token, address vestingPool) {
         _token = token;
         _vestingPool = vestingPool;
+
+        _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
+        _setupRole(TimelockRoles.TERMINATION_ADMIN_ROLE, _msgSender());
+        _setupRole(TimelockRoles.TIMELOCK_CREATOR_ROLE, _msgSender());
     }
 
     /**
      * @inheritdoc ITerminateable
      */
-    function terminate(address receiver, uint256 terminationFrom) external onlyOwner {
+    function terminate(address receiver, uint256 terminationFrom) external onlyTerminationAdmin {
         Timelock storage lock = _timelocks[receiver];
 
         if (lock.timelockFrom >= terminationFrom) {
@@ -70,7 +89,7 @@ contract BatchTimelock is Ownable, ITerminateable, IBatchTimelock, IVestingPool 
     /**
      * @inheritdoc ITerminateable
      */
-    function determinate(address receiver) external onlyOwner {
+    function determinate(address receiver) external onlyTerminationAdmin {
         Timelock storage lock = _timelocks[receiver];
         lock.isTerminated = false;
         lock.terminationFrom = 0;
@@ -81,27 +100,36 @@ contract BatchTimelock is Ownable, ITerminateable, IBatchTimelock, IVestingPool 
     /**
      * @inheritdoc IBatchTimelock
     */
-    function addTimelockBatch(Receiver[] memory receivers) external onlyOwner {
+    function addTimelockBatch(Receiver[] memory receivers) external onlyTimelockCreator {
         if (receivers.length == 0) {
             revert EmptyReceiversArray();
         }
 
-        for (uint256 i = 0; i < receivers.length; i++) {
-            _addTimelock(
-                receivers[i].receiver,
-                receivers[i].totalAmount,
-                receivers[i].timelockFrom,
-                receivers[i].cliffDuration,
-                receivers[i].vestingDuration
-            );
+        uint256 receiversCount = receivers.length; // Caching the array length outside a loop
+        unchecked {
+            for (uint256 i = 0; i < receiversCount; ++i) {
+                _addTimelock(
+                    receivers[i].receiver,
+                    receivers[i].totalAmount,
+                    receivers[i].timelockFrom,
+                    receivers[i].cliffDuration,
+                    receivers[i].vestingDuration
+                );
+            }
         }
     }
 
     /**
      * @inheritdoc IBatchTimelock
     */
-    function addTimelock(address receiver, uint256 totalAmount, uint256 timelockFrom, uint256 cliffDuration, uint256 vestingDuration) external onlyOwner {
-      _addTimelock(receiver, totalAmount, timelockFrom, cliffDuration, vestingDuration);
+    function addTimelock(
+        address receiver,
+        uint256 totalAmount,
+        uint256 timelockFrom,
+        uint256 cliffDuration,
+        uint256 vestingDuration
+    ) external onlyTimelockCreator {
+        _addTimelock(receiver, totalAmount, timelockFrom, cliffDuration, vestingDuration);
     }
 
     /**
@@ -112,13 +140,14 @@ contract BatchTimelock is Ownable, ITerminateable, IBatchTimelock, IVestingPool 
             revert ZeroClaimAmount();
         }
 
-        Timelock storage lock = _timelocks[msg.sender];
+        Timelock storage lock = _timelocks[_msgSender()];
+        uint256 blockTimestamp = block.timestamp;
 
-        if (lock.isTerminated && block.timestamp >= lock.terminationFrom) {
-            revert TimelockIsTerminated(msg.sender, lock.terminationFrom);
+        if (blockTimestamp < lock.timelockFrom + lock.cliffDuration) {
+            revert CliffPeriodNotEnded(blockTimestamp, lock.timelockFrom + lock.cliffDuration);
         }
 
-        uint256 withdrawable = getClaimableBalance(msg.sender);
+        uint256 withdrawable = getClaimableBalance(_msgSender());
 
         if (amount > withdrawable) {
             revert AmountExceedsWithdrawableAllowance(amount, withdrawable);
@@ -126,35 +155,39 @@ contract BatchTimelock is Ownable, ITerminateable, IBatchTimelock, IVestingPool 
 
         lock.releasedAmount += amount;
 
-        if (!_token.transferFrom(_vestingPool, msg.sender, amount)) {
-            revert TokenTransferFailed(_vestingPool, msg.sender, amount);
+        if (!_token.transferFrom(_vestingPool, _msgSender(), amount)) {
+            revert ErrorDuringTimelockClaimTransfer(_vestingPool, _msgSender(), amount);
         }
 
-        emit TokensClaimed(msg.sender, amount);
+        emit TokensClaimed(_msgSender(), amount);
     }
 
     /**
      * @inheritdoc IBatchTimelock
      */
     function getClaimableBalance(address receiver) public view returns (uint256) {
-        uint256 blockTimestampNow = block.timestamp;
         Timelock storage lock = _timelocks[receiver];
         uint256 lockFromPlusCliff = lock.timelockFrom + lock.cliffDuration;
-
-        if (lock.isTerminated && blockTimestampNow >= lock.terminationFrom) {
-            return 0;
-        }
+        uint256 blockTimestampNow = block.timestamp;
 
         if (blockTimestampNow < lockFromPlusCliff) {
             return 0;
         }
 
-        if (blockTimestampNow >= lockFromPlusCliff + lock.vestingDuration) {
-            return lock.totalAmount - lock.releasedAmount;
+        uint256 vestedTime;
+        if (lock.isTerminated) {
+            uint256 effectiveTerminationTime = lock.terminationFrom < blockTimestampNow ? lock.terminationFrom : blockTimestampNow;
+            vestedTime = effectiveTerminationTime > lockFromPlusCliff
+                ? effectiveTerminationTime - lockFromPlusCliff
+                : 0;
+        } else {
+            uint256 vestingEnd = lockFromPlusCliff + lock.vestingDuration;
+            vestedTime = blockTimestampNow < vestingEnd
+                ? blockTimestampNow - lockFromPlusCliff
+                : lock.vestingDuration;
         }
 
-        uint256 timeIntoVesting = blockTimestampNow - lockFromPlusCliff;
-        uint256 vestedPortion = (lock.totalAmount * timeIntoVesting) / lock.vestingDuration;
+        uint256 vestedPortion = (lock.totalAmount * vestedTime) / lock.vestingDuration;
 
         return vestedPortion - lock.releasedAmount;
     }
@@ -162,14 +195,14 @@ contract BatchTimelock is Ownable, ITerminateable, IBatchTimelock, IVestingPool 
     /**
      * @inheritdoc IBatchTimelock
     */
-    function getTimelock(address receiver) public view returns (Timelock memory) {
+    function getTimelock(address receiver) external view returns (Timelock memory) {
         return _timelocks[receiver];
     }
 
     /**
      * @inheritdoc IBatchTimelock
     */
-   function getTimelockReceivers(uint256 offset, uint256 limit) external view returns (address[] memory) {
+    function getTimelockReceivers(uint256 offset, uint256 limit) external view returns (address[] memory) {
         uint256 receiverCount = _allReceivers.length();
         if (offset >= receiverCount) {
             return new address[](0);
@@ -180,10 +213,11 @@ contract BatchTimelock is Ownable, ITerminateable, IBatchTimelock, IVestingPool 
         }
 
         address[] memory receivers = new address[](limit);
-        for (uint256 i = 0; i < limit; i++) {
-            receivers[i] = _allReceivers.at(offset + i);
+        unchecked {
+            for (uint256 i = 0; i < limit; ++i) {
+                receivers[i] = _allReceivers.at(offset + i);
+            }
         }
-
         return receivers;
     }
 
@@ -197,17 +231,20 @@ contract BatchTimelock is Ownable, ITerminateable, IBatchTimelock, IVestingPool 
     /**
      * @inheritdoc IVestingPool
      */
-    function getCurrentAllowance() public view returns (uint256) {
+    function getCurrentAllowance() external view returns (uint256) {
         return _token.allowance(_vestingPool, address(this));
     }
 
     /**
      * @inheritdoc IVestingPool
      */
-    function getTotalTokensLocked() public view returns (uint256) {
+    function getTotalTokensLocked() external view returns (uint256) {
         uint256 total = 0;
-        for (uint256 i = 0; i < _allReceivers.length(); i++) {
-            total += _timelocks[_allReceivers.at(i)].totalAmount;
+        uint256 receiverCount = _allReceivers.length(); // Caching the array length outside a loop
+        unchecked {
+            for (uint256 i = 0; i < receiverCount; ++i) {
+                total += _timelocks[_allReceivers.at(i)].totalAmount;
+            }
         }
         return total;
     }
@@ -215,14 +252,14 @@ contract BatchTimelock is Ownable, ITerminateable, IBatchTimelock, IVestingPool 
     /**
      * @inheritdoc IVestingPool
      */
-    function getVestingPoolAddress() public view returns (address) {
+    function getVestingPoolAddress() external view returns (address) {
         return _vestingPool;
     }
 
     /**
      * @inheritdoc IVestingPool
      */
-    function getTokenAddress() public view returns (address) {
+    function getTokenAddress() external view returns (address) {
         return address(_token);
     }
 
@@ -234,19 +271,20 @@ contract BatchTimelock is Ownable, ITerminateable, IBatchTimelock, IVestingPool 
      * @param cliffDuration Cliff time in seconds (6 months default).
      * @param vestingDuration Vesting duration in seconds (18/24 months).
     */
-    function _addTimelock(address receiver, uint256 totalAmount, uint256 timelockFrom, uint256 cliffDuration, uint256 vestingDuration) internal onlyOwner {
+    function _addTimelock(address receiver, uint256 totalAmount, uint256 timelockFrom, uint256 cliffDuration, uint256 vestingDuration) internal onlyTimelockCreator {
         if (receiver == address(0)) revert InvalidReceiverAddress();
         if (totalAmount == 0) revert InvalidTimelockAmount();
         if (_allReceivers.contains(receiver)) revert ReceiverAlreadyHasATimelock(receiver);
+        if (timelockFrom < 0) revert InvalidTimelockStart();
 
         _timelocks[receiver] = Timelock({
             receiver: receiver,
+            isTerminated: false,
             totalAmount: totalAmount,
             releasedAmount: 0,
             timelockFrom: timelockFrom,
             cliffDuration: cliffDuration,
             vestingDuration: vestingDuration,
-            isTerminated: false,
             terminationFrom: 0
         });
         _allReceivers.add(receiver);
