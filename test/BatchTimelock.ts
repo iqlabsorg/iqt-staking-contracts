@@ -515,5 +515,46 @@ describe("BatchTimelock Contract", function () {
         expect(tokenAddress).to.equal(iqtMock.target);
       });
     });
+
+    describe("getClaimableBalance amount should be the same if addTimelock is called before or after cliff", function () {
+      beforeEach(async function () {
+        timelockReceiver1Address = await timelockReceiver1.getAddress();
+        timelockReceiver2Address = await timelockReceiver2.getAddress();
+      });
+
+      it("Should calculate correct withdrawable amount if addTimelock is called before cliff", async function () {
+        const CLIFF_DURATION = 15552000;
+        const VESTING_DURATION = 31104000;
+        const TIMELOCK_AMOUNT = ethers.parseEther('1000');
+        const TIMESTAMP_NOW = Math.floor(Date.now() / 1000);
+
+        await batchTimelock.connect(deployer).addTimelock(timelockReceiver1Address, TIMELOCK_AMOUNT, TIMESTAMP_NOW, CLIFF_DURATION, VESTING_DURATION);
+
+        await ethers.provider.send("evm_increaseTime", [CLIFF_DURATION + CLIFF_DURATION / 2]);
+        await ethers.provider.send("evm_mine", []);
+
+        const withdrawableAmountBeforeCliff = await batchTimelock.getClaimableBalance(timelockReceiver1Address);
+
+        console.log("timelockReceiver1Address withdraw amount before cliff:", withdrawableAmountBeforeCliff.toString());
+
+      });
+
+      it("Should calculate correct withdrawable amount if addTimelock is called after cliff", async function () {
+        const CLIFF_DURATION = 15552000;
+        const VESTING_DURATION = 31104000;
+        const TIMELOCK_AMOUNT = ethers.parseEther('1000');
+        const TIMESTAMP_NOW = Math.floor(Date.now() / 1000);
+
+        await ethers.provider.send("evm_increaseTime", [CLIFF_DURATION + CLIFF_DURATION / 2]);
+        await ethers.provider.send("evm_mine", []);
+
+        await batchTimelock.connect(deployer).addTimelock(timelockReceiver2Address, TIMELOCK_AMOUNT, TIMESTAMP_NOW, CLIFF_DURATION, VESTING_DURATION);
+
+        const withdrawableAmountAfterCliff = await batchTimelock.getClaimableBalance(timelockReceiver2Address);
+
+        console.log("timelockReceiver2Address withdraw amount after cliff:", withdrawableAmountAfterCliff.toString());
+      });
+
+    });
   });
 });
