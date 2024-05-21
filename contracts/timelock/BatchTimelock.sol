@@ -167,6 +167,11 @@ contract BatchTimelock is ITerminateable, IBatchTimelock, IVestingPool, AccessCo
      */
     function getClaimableBalance(address receiver) public view returns (uint256) {
         Timelock storage lock = _timelocks[receiver];
+
+        if (lock.vestingDuration == 0) {
+            return 0;
+        }
+
         uint256 lockFromPlusCliff = lock.timelockFrom + lock.cliffDuration;
         uint256 blockTimestampNow = block.timestamp;
 

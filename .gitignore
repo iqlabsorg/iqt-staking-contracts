@@ -141,7 +141,4 @@ cache/
 deployments/
 
 # calculation csv files
-employee_rewards.csv
-myst_calculated.csv
-niox_calculated.csv
-prq_calculated.csv
+*.csv

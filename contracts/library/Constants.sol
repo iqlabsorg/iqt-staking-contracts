@@ -7,6 +7,6 @@ library Constants {
     uint256 constant MONTHS_IN_YEAR = 12;
     uint256 constant DAYS_IN_YEAR = 365;
     uint256 constant SECONDS_IN_DAY = 86400;
-    uint256 constant SECONDS_IN_MONTH = 30 * SECONDS_IN_DAY;
-    uint256 constant SECONDS_IN_YEAR = 31536000;
+    uint256 constant SECONDS_IN_MONTH = 2629746;
+    uint256 constant SECONDS_IN_YEAR = 31556952;
 }

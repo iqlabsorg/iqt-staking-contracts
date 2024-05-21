@@ -28,9 +28,19 @@ contract Staking is IStaking, Context {
     address internal _stakingPool;
 
     /**
-     * @dev Balance of the staking pool assuming all stakes.
+     * @dev Total amount of tokens staked.
     */
-    uint256 internal _stakingPoolSize;
+    uint256 internal _totalTokensStaked;
+
+    /**
+     * @dev Reward pool size.
+    */
+    uint256 internal _rewardPoolSize;
+
+    /**
+     * @dev Amount of tokens left in the reward pool.
+    */
+    uint256 internal _rewardPoolLeft;
 
     /**
      * @dev User stakes data.
@@ -74,10 +84,12 @@ contract Staking is IStaking, Context {
      * @dev Constructor.
      * @param stakingManagement Address of the staking management contract.
      */
-    constructor(address stakingManagement, address stakingPool) {
+    constructor(address stakingManagement, address stakingPool, uint256 rewardPoolSize) {
         _stakingManagement = IStakingManagement(stakingManagement);
         _stakingToken = IERC20(_stakingManagement.getStakingToken());
         _stakingPool = stakingPool;
+        _rewardPoolSize = rewardPoolSize;
+        _rewardPoolLeft = _rewardPoolSize;
     }
 
     /**
@@ -106,22 +118,29 @@ contract Staking is IStaking, Context {
     function withdraw(uint256 stakeId) external override onlyExistingStake(stakeId) onlyStakeOwner(stakeId)  {
         Stake storage stakeRecord = _stakes[stakeId];
         uint256 currentTimestamp = block.timestamp;
+        bool isEarlyWithdrawalAllowed = _stakingManagement.isWithdrawEnabled();
 
+        uint256 stakedAmount = stakeRecord.amount;
+        (uint256 estimatedEarningsInTokens, ) = estimateStakeEarnings(stakedAmount, stakeRecord.stakingPlanId);
         uint256 withdrawalAmount;
+        bool earlyWithdrawal;
 
         if (stakeRecord.withdrawn) revert StakeAlreadyWithdrawn(stakeId);
         if (currentTimestamp < stakeRecord.endTimestamp) {
-            if (!_stakingManagement.isWithdrawEnabled()) {
+            if (!isEarlyWithdrawalAllowed) {
                 revert EarlyWithdrawalNotAllowed(currentTimestamp, stakeRecord.endTimestamp);
+            } else {
+                earlyWithdrawal = true;
             }
-            withdrawalAmount = stakeRecord.amount;
-            stakeRecord.earlyWithdrawal = true;
+
+            withdrawalAmount = stakedAmount;
+            stakeRecord.earlyWithdrawal = earlyWithdrawal;
             stakeRecord.withdrawn = true;
             stakeRecord.endTimestamp = currentTimestamp;
             stakeRecord.earningsInTokens = 0;
             stakeRecord.earningsPercentage = 0;
         } else {
-            (stakeRecord.earningsInTokens, stakeRecord.earningsPercentage) = _calculateStakeEarnings(stakeId);
+            (stakeRecord.earningsInTokens, stakeRecord.earningsPercentage) = calculateStakeEarnings(stakeId);
             stakeRecord.withdrawn = true;
             withdrawalAmount = stakeRecord.amount + stakeRecord.earningsInTokens;
         }
@@ -131,8 +150,13 @@ contract Staking is IStaking, Context {
             revert ErrorDuringWithdrawTransfer(_stakingPool, _msgSender(),  withdrawalAmount);
         }
 
-        // subtract withdrawal amount from staking pool size
-        _stakingPoolSize -= withdrawalAmount;
+        // subtract withdrawal amount from total staked
+        _totalTokensStaked -= stakedAmount;
+
+        // add earnings to reward pool if early withdrawal
+        if (earlyWithdrawal && isEarlyWithdrawalAllowed) {
+            _rewardPoolLeft += estimatedEarningsInTokens;
+        }
 
         // remove stake from stakes per plan counter
         if (!_stakesPerPlan[stakeRecord.stakingPlanId].remove(stakeId)) {
@@ -145,17 +169,22 @@ contract Staking is IStaking, Context {
     /**
      * @inheritdoc IStaking
      */
-    function getStake(uint256 stakeId) external view override onlyExistingStake(stakeId) returns (Stake memory) {
-        return _stakes[stakeId];
+    function setRewardPoolSize(uint256 rewardPoolSize) external override {
+        uint256 totalRewardsGiven = _rewardPoolSize - _rewardPoolLeft;
+
+        if (rewardPoolSize < totalRewardsGiven) {
+            revert NewRewardPoolSizeIsLessThanGiven(rewardPoolSize, totalRewardsGiven);
+        }
+
+        _rewardPoolSize = rewardPoolSize;
+        _rewardPoolLeft = rewardPoolSize - totalRewardsGiven;
     }
 
     /**
      * @inheritdoc IStaking
      */
-    function calculateStakeEarnings(
-        uint256 stakeId
-    ) public view onlyExistingStake(stakeId) returns (uint256 earningsInTokens, uint256 earningsPercentage) {
-        (earningsInTokens, earningsPercentage) = _calculateStakeEarnings(stakeId);
+    function getStake(uint256 stakeId) external view override onlyExistingStake(stakeId) returns (Stake memory) {
+        return _stakes[stakeId];
     }
 
     /**
@@ -165,25 +194,43 @@ contract Staking is IStaking, Context {
         uint256 amount,
         uint256 stakingPlanId
     ) public view returns (uint256 predictedEarningsInTokens, uint256 predictedEarningsPercentage) {
+        if (amount == 0) return (0, 0);
+
         _stakingManagement.checkStakingPlanExists(stakingPlanId);
         IStakingManagement.StakingPlan memory plan = _stakingManagement.getStakingPlan(stakingPlanId);
 
-        uint256 precision = Constants.DECIMALS_PRECISION;
+        return _calculateEarnings(amount, stakingPlanId, plan.duration);
+    }
 
-        uint256 dailyRate = (plan.apy * precision) / Constants.HUNDRED_PERCENT / Constants.DAYS_IN_YEAR;
-        uint256 compoundingPeriods = plan.duration / Constants.SECONDS_IN_DAY;
+    /**
+     * @inheritdoc IStaking
+     */
+    function calculateStakeEarnings(
+        uint256 stakeId
+    ) public view onlyExistingStake(stakeId) returns (uint256 earningsInTokens, uint256 earningsPercentage) {
+        Stake memory stakeRecord = _stakes[stakeId];
 
-        uint256 compoundedBalance = amount * precision;
-        for (uint256 i = 0; i < compoundingPeriods; i++) {
-            compoundedBalance += (compoundedBalance * dailyRate / precision);
+        uint256 elapsedDuration = block.timestamp - stakeRecord.startTimestamp;
+
+        return _calculateEarnings(stakeRecord.amount, stakeRecord.stakingPlanId, elapsedDuration);
+    }
+
+    /**
+     * @inheritdoc IStaking
+     */
+    function simulateStakeEarnings(
+        uint256 stakeId,
+        uint256 timestamp
+    ) public view onlyExistingStake(stakeId) returns (uint256 earningsInTokens, uint256 earningsPercentage) {
+        Stake memory stakeRecord = _stakes[stakeId];
+
+        if (timestamp < stakeRecord.startTimestamp) {
+            revert InvalidSimulationTimestamp(timestamp, stakeRecord.startTimestamp);
         }
 
-        predictedEarningsInTokens = compoundedBalance / precision - amount;
-        predictedEarningsPercentage = (predictedEarningsInTokens > 0 && amount > 0)
-            ? (predictedEarningsInTokens * Constants.HUNDRED_PERCENT * precision) / amount / precision
-            : 0;
+        uint256 elapsedDuration = timestamp - stakeRecord.startTimestamp;
 
-        return (predictedEarningsInTokens, predictedEarningsPercentage);
+        return _calculateEarnings(stakeRecord.amount, stakeRecord.stakingPlanId, elapsedDuration);
     }
 
     /**
@@ -234,6 +281,61 @@ contract Staking is IStaking, Context {
 
     /**
      * @inheritdoc IStaking
+     */
+    function getStakesAndIds(address staker, uint256 offset, uint256 limit) external view override returns (Stake[] memory, uint256[] memory) {
+        uint256 stakeCount = _userStakes[staker].length();
+        if (offset >= stakeCount) {
+            return (new Stake[](0), new uint256[](0));
+        }
+
+        if (offset + limit > stakeCount) {
+            limit = stakeCount - offset;
+        }
+
+        Stake[] memory stakes = new Stake[](limit);
+        uint256[] memory stakeIds = new uint256[](limit);
+        for (uint256 i = 0; i < limit; i++) {
+            uint256 stakeId = _userStakes[staker].at(offset + i);
+            stakes[i] = _stakes[stakeId];
+            stakeIds[i] = stakeId;
+        }
+
+        return (stakes, stakeIds);
+    }
+
+    /**
+     * @inheritdoc IStaking
+     */
+    function getStakesWithIdsAndEarnings(
+        address staker,
+        uint256 offset,
+        uint256 limit
+    ) external view returns(Stake[] memory, uint256[] memory, StakeEarnings[] memory) {
+        uint256 stakeCount = _userStakes[staker].length();
+        if (offset >= stakeCount) {
+            return (new Stake[](0), new uint256[](0), new StakeEarnings[](0));
+        }
+
+        if (offset + limit > stakeCount) {
+            limit = stakeCount - offset;
+        }
+
+        Stake[] memory stakes = new Stake[](limit);
+        uint256[] memory stakeIds = new uint256[](limit);
+        StakeEarnings[] memory earnings = new StakeEarnings[](limit);
+        for (uint256 i = 0; i < limit; i++) {
+            uint256 stakeId = _userStakes[staker].at(offset + i);
+            stakes[i] = _stakes[stakeId];
+            stakeIds[i] = stakeId;
+            (earnings[i].earningsInTokens, earnings[i].earningsPercentage) = calculateStakeEarnings(stakeId);
+            (earnings[i].estimatedEarningsInTokens, earnings[i].estimatedEarningsPercentage) = estimateStakeEarnings(stakes[i].amount, stakes[i].stakingPlanId);
+        }
+
+        return (stakes, stakeIds, earnings);
+    }
+
+    /**
+     * @inheritdoc IStaking
     */
     function getStakesCount(address staker) external view override returns (uint256) {
         return _userStakes[staker].length();
@@ -244,6 +346,27 @@ contract Staking is IStaking, Context {
      */
     function getAllStakesCount() external view override returns (uint256) {
         return _allStakeIds.length();
+    }
+
+    /**
+     * @inheritdoc IStaking
+     */
+    function getUserStakeIds(address staker, uint256 offset, uint256 limit) external view override returns (uint256[] memory) {
+        uint256 stakeCount = _userStakes[staker].length();
+        if (offset >= stakeCount) {
+            return new uint256[](0);
+        }
+
+        if (offset + limit > stakeCount) {
+            limit = stakeCount - offset;
+        }
+
+        uint256[] memory stakeIds = new uint256[](limit);
+        for (uint256 i = 0; i < limit; i++) {
+            stakeIds[i] = _userStakes[staker].at(offset + i);
+        }
+
+        return stakeIds;
     }
 
     /**
@@ -275,42 +398,36 @@ contract Staking is IStaking, Context {
     /**
      * @inheritdoc IStaking
      */
-    function getTotalStaked() external view override returns (uint256) {
-        uint256 total = 0;
-        for (uint256 i = 0; i < _allStakeIds.length(); i++) {
-            total += _stakes[_allStakeIds.at(i)].amount;
-        }
-        return total;
-    }
-
-    /**
-     * @inheritdoc IStaking
-     */
     function calculateTotalEarnings(
         address staker
     ) external view returns (uint256 totalEarningsInTokens, uint256 totalEarningsPercentage) {
         uint256[] memory stakeIds = _userStakes[staker].values();
         totalEarningsInTokens = 0;
         uint256 totalWeightedPercentage = 0;
+        uint256 totalPrincipal = 0;
 
         for (uint256 i = 0; i < stakeIds.length; i++) {
-            (uint256 earningsInTokens, uint256 earningsPercentage) = _calculateStakeEarnings(stakeIds[i]);
-            totalEarningsInTokens += earningsInTokens;
+            uint256 stakeId = stakeIds[i];
+            Stake memory stakeRecord = _stakes[stakeId];
+            uint256 principal = stakeRecord.amount;
 
-            // Weight the percentage by the earnings in tokens and accumulate
-            totalWeightedPercentage += (uint256(earningsPercentage) * earningsInTokens) / 1e4; // Adjust for percentage scale
+            (uint256 earningsInTokens, uint256 earningsPercentage) = calculateStakeEarnings(stakeId);
+            totalEarningsInTokens += earningsInTokens;
+            totalPrincipal += principal;
+
+            // Weight the percentage by the principal amount and accumulate
+            totalWeightedPercentage += (earningsPercentage * principal);
         }
 
-        if (totalEarningsInTokens > 0) {
-            // Calculate the total earnings percentage as a weighted average
-            totalEarningsPercentage = (totalWeightedPercentage * 1e4) / totalEarningsInTokens;
+        if (totalPrincipal > 0) {
+            // Calculate the average weighted earnings percentage
+            totalEarningsPercentage = totalWeightedPercentage / totalPrincipal;
         } else {
             totalEarningsPercentage = 0;
         }
 
         return (totalEarningsInTokens, totalEarningsPercentage);
     }
-
 
     /**
      * @inheritdoc IStaking
@@ -374,8 +491,22 @@ contract Staking is IStaking, Context {
     /**
      * @inheritdoc IStaking
      */
-    function getStakingPoolSize() external view override returns (uint256) {
-        return _stakingPoolSize;
+    function getTotalTokensStaked() external view override returns (uint256) {
+        return _totalTokensStaked;
+    }
+
+    /**
+     * @inheritdoc IStaking
+     */
+    function getRewardPoolSize() external view override returns (uint256) {
+        return _rewardPoolSize;
+    }
+
+    /**
+     * @inheritdoc IStaking
+     */
+    function getRewardPoolLeft() external view override returns (uint256) {
+        return _rewardPoolLeft;
     }
 
     /**
@@ -401,47 +532,58 @@ contract Staking is IStaking, Context {
      * @param estimatedEarningsInTokens Estimated earnings in tokens.
     */
     function _checkStakingPoolBalance(uint256 estimatedEarningsInTokens) internal view {
-        uint256 stakingPoolBalance = _stakingToken.balanceOf(_stakingPool);
-        if (stakingPoolBalance < _stakingPoolSize + estimatedEarningsInTokens) {
-            revert InsufficientStakingPoolBalance(_stakingPoolSize + estimatedEarningsInTokens, stakingPoolBalance);
+        if (_rewardPoolLeft < estimatedEarningsInTokens) {
+            revert InsufficientRewardPoolBalance(estimatedEarningsInTokens, _rewardPoolLeft);
         }
     }
 
     /**
-     * @dev Calculates the stake earnings in tokens and percentages.
-     * @param stakeId Unique ID of the stake.
-     * @return earningsInTokens Earnings in tokens.
-     * @return earningsPercentage Earnings in percentage.
+     * @dev Calculates the earnings for a stake.
+     * @param amount Amount of tokens staked.
+     * @param stakingPlanId Index of the staking plan.
+     * @param duration Duration of the stake.
     */
-    function _calculateStakeEarnings(
-        uint256 stakeId
-    ) public view onlyExistingStake(stakeId) returns (uint256 earningsInTokens, uint256 earningsPercentage) {
-        Stake memory stakeRecord = _stakes[stakeId];
-        IStakingManagement.StakingPlan memory plan = _stakingManagement.getStakingPlan(stakeRecord.stakingPlanId);
+    function _calculateEarnings(
+        uint256 amount,
+        uint256 stakingPlanId,
+        uint256 duration
+    ) internal view returns (uint256 earningsInTokens, uint256 earningsPercentage) {
+        IStakingManagement.StakingPlan memory plan = _stakingManagement.getStakingPlan(stakingPlanId);
 
-        if (block.timestamp < stakeRecord.startTimestamp) return (0, 0);
-
-        uint256 compoundingFrequency = Constants.DAYS_IN_YEAR;
-        uint256 precision = Constants.DECIMALS_PRECISION;
-        uint256 dailyRate = (plan.apy * precision) / Constants.HUNDRED_PERCENT / compoundingFrequency;
-        uint256 compoundingPeriods = (block.timestamp < stakeRecord.endTimestamp ?
-            block.timestamp : stakeRecord.endTimestamp)
-            - stakeRecord.startTimestamp;
-        uint256 totalCompoundingPeriods = compoundingPeriods / Constants.SECONDS_IN_DAY;
-        uint256 compoundedBalance = stakeRecord.amount * precision;
-
-        unchecked {
-            for (uint256 i = 0; i < totalCompoundingPeriods; ++i) {
-                compoundedBalance += (compoundedBalance * dailyRate / precision);
-            }
+        if (duration >= plan.duration) {
+            duration = plan.duration;
         }
-        earningsInTokens = compoundedBalance / precision - stakeRecord.amount;
 
-        if (earningsInTokens > 0 && stakeRecord.amount > 0) {
-            earningsPercentage = (earningsInTokens * Constants.HUNDRED_PERCENT * precision) / stakeRecord.amount / precision;
+        uint256 precision = 1e18;
+        uint256 compoundingPeriods;
+        uint256 periodRate;
+
+        // compoundingPeriods = duration / Constants.SECONDS_IN_DAY;
+        // periodRate = (plan.apy * precision) / (Constants.HUNDRED_PERCENT * Constants.DAYS_IN_YEAR);
+
+        // if (plan.duration >= Constants.SECONDS_IN_YEAR) {
+        //     compoundingPeriods = duration / Constants.SECONDS_IN_YEAR;
+        //     periodRate = (plan.apy * precision) / Constants.HUNDRED_PERCENT;
+        // }
+
+        if (duration >= Constants.SECONDS_IN_YEAR) {
+            // Annual compounding
+            compoundingPeriods = duration / Constants.SECONDS_IN_YEAR;
+            periodRate = (plan.apy * precision) / Constants.HUNDRED_PERCENT;
         } else {
-            earningsPercentage = 0;
+            // Monthly compounding
+            compoundingPeriods = duration / Constants.SECONDS_IN_MONTH;
+            periodRate = (plan.apy * precision) / (Constants.HUNDRED_PERCENT * Constants.MONTHS_IN_YEAR);
         }
+
+        uint256 compoundedBalance = amount * precision;
+
+        for (uint256 i = 0; i < compoundingPeriods; i++) {
+            compoundedBalance = compoundedBalance * (precision + periodRate) / precision;
+        }
+
+        earningsInTokens = (compoundedBalance / precision) - amount;
+        earningsPercentage = (earningsInTokens * Constants.HUNDRED_PERCENT) / amount;
 
         return (earningsInTokens, earningsPercentage);
     }
@@ -494,8 +636,8 @@ contract Staking is IStaking, Context {
         }
 
         unchecked {
-            _stakingPoolSize += amount;
-            _stakingPoolSize += estimatedEarningsInTokens;
+            _totalTokensStaked += amount;
+            _rewardPoolLeft -= estimatedEarningsInTokens;
         }
     }
 }

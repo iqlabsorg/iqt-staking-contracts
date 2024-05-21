@@ -79,7 +79,7 @@ contract StakingManagement is IStakingManagement, AccessControl {
      */
     function addStakingPlan(uint256 duration, uint16 apy) external override onlyStakingManager returns (uint256) {
         if (duration < Constants.SECONDS_IN_DAY) revert DurationMustBeGreaterThanOneDay();
-        if (apy == 0 || apy > Constants.HUNDRED_PERCENT) revert APYMustBeWithinRange();
+        // if (apy == 0 || apy > Constants.HUNDRED_PERCENT) revert APYMustBeWithinRange();
 
         unchecked {
             _latestStakingPlanId++;

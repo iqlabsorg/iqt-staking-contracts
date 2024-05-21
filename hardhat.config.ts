@@ -5,11 +5,16 @@ import '@nomicfoundation/hardhat-chai-matchers';
 import '@nomicfoundation/hardhat-ethers';
 import '@nomicfoundation/hardhat-verify';
 import '@nomicfoundation/hardhat-toolbox';
-import "hardhat-gas-reporter"
+import 'hardhat-gas-reporter';
 import * as dotenv from 'dotenv';
 
 const env = dotenv.config();
 
+import './tasks/get-batch-timelock-roles';
+import './tasks/deploy-staking-data';
+import './tasks/deploy-timelocks-list';
+import './tasks/get-staking-manager-role';
+import './tasks/setup-staking';
 import './tasks/deploy-iqt-mock';
 import './tasks/deploy-batch-timelock';
 import './tasks/deploy-staking';
@@ -18,6 +23,9 @@ import './tasks/batch-timelock';
 
 const DEPLOYMENT_PRIVATE_KEY = env.parsed?.DEPLOYMENT_PRIVATE_KEY;
 const accounts = DEPLOYMENT_PRIVATE_KEY ? [DEPLOYMENT_PRIVATE_KEY] : [];
+const etherscanApiKeyPolygon = env.parsed?.POLYGONSCAN_API_KEY;
+const okLinkApiKey = env.parsed?.OKLINK_API_KEY;
+const etherscanApiKeyEthereum = env.parsed?.ETHERSCAN_API_KEY;
 
 const config: HardhatUserConfig = {
   solidity: {
@@ -47,14 +55,49 @@ const config: HardhatUserConfig = {
       accounts,
       timeout: 40000,
     },
+    polygonAmoy: {
+      url: `https://rpc.ankr.com/polygon_amoy/${env.parsed?.ANKR_PROJECT_KEY}`,
+      accounts,
+      timeout: 40000,
+    },
+    polygonMumbai: {
+      url: `https://rpc.ankr.com/polygon_mumbai/${env.parsed?.ANKR_PROJECT_KEY}`,
+      accounts,
+      timeout: 40000,
+    },
+    polygon: {
+      url: `https://rpc.ankr.com/polygon/${env.parsed?.ANKR_PROJECT_KEY}`,
+      accounts,
+      gasPrice: 100000000000,
+      timeout: 40000,
+    },
   },
   etherscan: {
-    apiKey: env.parsed?.ETHERSCAN_API_KEY
+    apiKey: {
+      polygon: etherscanApiKeyPolygon!,
+      polygonMumbai: etherscanApiKeyPolygon!,
+      polygonAmoy: etherscanApiKeyPolygon!,
+      ethereumMainnet: etherscanApiKeyEthereum!,
+    },
+    customChains: [
+      {
+        network: 'polygonAmoy',
+        chainId: 80002,
+        urls: {
+          apiURL: "https://www.oklink.com/api/explorer/v1/contract/verify/async/api/polygonAmoy",
+          browserURL: "https://www.oklink.com/polygonAmoy"
+        },
+        // urls: {
+        //   apiURL: 'https://api-amoy.polygonscan.com/api',
+        //   browserURL: 'https://amoy.polygonscan.com',
+        // },
+      },
+    ],
   },
   sourcify: {
     // Disabled by default
     // Doesn't need an API key
-    enabled: false
+    enabled: false,
   },
   gasReporter: {
     enabled: env.parsed?.REPORT_GAS !== undefined,

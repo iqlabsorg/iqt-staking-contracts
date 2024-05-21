@@ -48,7 +48,7 @@ interface IStaking {
      * @param requiredBalance Amount of tokens required to be available.
      * @param currentBalance Amount of tokens currently available.
      */
-    error InsufficientStakingPoolBalance(uint256 requiredBalance, uint256 currentBalance);
+    error InsufficientRewardPoolBalance(uint256 requiredBalance, uint256 currentBalance);
 
     /**
      * @dev Reverts if there is an error during adding user stake.
@@ -93,6 +93,20 @@ interface IStaking {
     error ErrorDuringWithdrawTransfer(address stakingPool, address staker, uint256 withdrawalAmount);
 
     /**
+     * @dev Reverts if the staking pool size is less than the current size.
+        * @param newRewardPoolSize New size of the reward pool.
+        * @param currentRewardPoolSize Current size of the reward pool.
+     */
+    error NewRewardPoolSizeIsLessThanGiven(uint256 newRewardPoolSize, uint256 currentRewardPoolSize);
+
+    /**
+     * @dev Reverts if the timestamp is before staking start.
+     * @param timestamp Timestamp selected.
+     * @param startTimestamp Staking start timestamp.
+     */
+    error InvalidSimulationTimestamp(uint256 timestamp, uint256 startTimestamp);
+
+    /**
      * @dev Emitted when a stake is added.
      * @param staker Address of the staker.
      * @param stakeId Unique ID of the stake.
@@ -130,6 +144,18 @@ interface IStaking {
     }
 
     /**
+     * @dev Stake earnings data.
+     * @param earningsInTokens Amount of tokens earned.
+     * @param earningsPercentage Percentage of tokens earned.
+     */
+    struct StakeEarnings {
+        uint256 earningsInTokens;
+        uint256 earningsPercentage;
+        uint256 estimatedEarningsInTokens;
+        uint256 estimatedEarningsPercentage;
+    }
+
+    /**
      * @dev Stake `amount` tokens for `stakingPlan` period.
      * @param amount Amount of tokens to stake.
      * @param stakingPlan Index of the staking plan to stake for.
@@ -144,14 +170,10 @@ interface IStaking {
     function withdraw(uint256 stakeId) external;
 
     /**
-     * @dev Calculate the earnings in tokens and percentages.
-     * @param stakeId Unique ID of the stake.
-     * @return earningsInTokens Amount of tokens earned.
-     * @return earningsPercentage Percentage of tokens earned.
+     * @dev Set the staking pool size.
+     * @param rewardPoolSize New size of the reward pool.
      */
-    function calculateStakeEarnings(
-        uint256 stakeId
-    ) external view returns (uint256 earningsInTokens, uint256 earningsPercentage);
+    function setRewardPoolSize(uint256 rewardPoolSize) external;
 
     /**
      * @dev Calculate the amount of tokens earned for a stake.
@@ -178,6 +200,30 @@ interface IStaking {
     function getAllStakes(uint256 offset, uint256 limit) external view returns (Stake[] memory);
 
     /**
+     * @dev Get all staker stakes data.
+     * @param staker Address of the staker.
+     * @param offset Offset of the stakes.
+     * @param limit Limit of the stakes.
+     * @return Array of staker stakes.
+     */
+    function getStakesAndIds(address staker, uint256 offset, uint256 limit) external view returns (Stake[] memory, uint256[] memory);
+
+    /**
+     * @dev Get all staker stakes data with earnings.
+     * @param staker Address of the staker.
+     * @param offset Offset of the stakes.
+     * @param limit Limit of the stakes.
+     * @return stakes Array of stakes.
+     * @return stakeIds Array of stake ids.
+     * @return earnings Array of stake earnings.
+     */
+    function getStakesWithIdsAndEarnings(
+        address staker,
+        uint256 offset,
+        uint256 limit
+    ) external view returns (Stake[] memory, uint256[] memory, StakeEarnings[] memory);
+
+    /**
      * @dev Get the amount of staker stakes amount.
      * @param staker Address of the staker.
      * @return Amount of staker stakes staked.
@@ -189,6 +235,13 @@ interface IStaking {
      * @return Amount of all stakes.
      */
     function getAllStakesCount() external view returns (uint256);
+
+    /**
+     * @dev Get the amount of staker stakes amount.
+     * @param staker Address of the staker.
+     * @return Amount of staker stakes staked.
+     */
+    function getUserStakeIds(address staker, uint256 offset, uint256 limit) external view returns (uint256[] memory);
 
     /**
      * @dev Get all staker stakes ids.
@@ -211,12 +264,6 @@ interface IStaking {
     function getStakedAmount(address staker) external view returns (uint256);
 
     /**
-     * @dev Get the total amount of tokens staked.
-     * @return Total amount of tokens staked.
-     */
-    function getTotalStaked() external view returns (uint256);
-
-    /**
      * @dev Calculate the total earnings in tokens and percentages.
      */
     function calculateTotalEarnings(
@@ -234,6 +281,27 @@ interface IStaking {
         uint256 amount,
         uint256 stakingPlanId
     ) external view returns (uint256 predictedEarningsInTokens, uint256 predictedEarningsPercentage);
+
+    /**
+     * @dev Calculate the earnings in tokens and percentages.
+     * @param stakeId Unique ID of the stake.
+     * @return earningsInTokens Amount of tokens earned.
+     * @return earningsPercentage Percentage of tokens earned.
+     */
+    function calculateStakeEarnings(
+        uint256 stakeId
+    ) external view returns (uint256 earningsInTokens, uint256 earningsPercentage);
+
+    /**
+     * @dev Calculate the earnings in tokens and percentages.
+     * @param stakeId Unique ID of the stake.
+     * @return earningsInTokens Amount of tokens earned.
+     * @return earningsPercentage Percentage of tokens earned.
+     */
+    function simulateStakeEarnings(
+        uint256 stakeId,
+        uint256 timestamp
+    ) external view returns (uint256 earningsInTokens, uint256 earningsPercentage);
 
     /**
      * @dev Returns `true` if a stake exists.
@@ -271,7 +339,17 @@ interface IStaking {
     function getStakingPool() external view returns (address);
 
     /**
-     * @dev Returns the size of staking pool covering all the staking rewards.
+     * @dev Returns the total staked tokens amount.
     */
-    function getStakingPoolSize() external view returns (uint256);
+    function getTotalTokensStaked() external view returns (uint256);
+
+    /**
+     * @dev Returns the reward pool size.
+    */
+    function getRewardPoolSize() external view returns (uint256);
+
+    /**
+     * @dev Returns the reward pool left.
+    */
+    function getRewardPoolLeft() external view returns (uint256);
 }
