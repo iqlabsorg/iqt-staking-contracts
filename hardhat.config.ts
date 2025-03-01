@@ -20,6 +20,9 @@ import './tasks/deploy-batch-timelock';
 import './tasks/deploy-staking';
 import './tasks/deploy-staking-management';
 import './tasks/batch-timelock';
+import './tasks/backup-unlock';
+import './tasks/print-roles';
+import './tasks/calculate-amount-total';
 
 const DEPLOYMENT_PRIVATE_KEY = env.parsed?.DEPLOYMENT_PRIVATE_KEY;
 const accounts = DEPLOYMENT_PRIVATE_KEY ? [DEPLOYMENT_PRIVATE_KEY] : [];
@@ -66,7 +69,7 @@ const config: HardhatUserConfig = {
       timeout: 40000,
     },
     polygon: {
-      url: `https://rpc.ankr.com/polygon/${env.parsed?.ANKR_PROJECT_KEY}`,
+      url: `https://polygon-mainnet.g.alchemy.com/v2/${env.parsed?.ANKR_PROJECT_KEY}`,
       accounts,
       gasPrice: 100000000000,
       timeout: 40000,

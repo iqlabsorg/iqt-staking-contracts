@@ -75,7 +75,6 @@ task('add:timelock-batch', 'Adds a batch of timelocks from a CSV file')
 
         const tx = await batchTimelockContract.addTimelockBatch(batch, {
           gasLimit: estimate,
-          // gasPrice: '50000000000',
           gasPrice: '55000000000',
         });
 
