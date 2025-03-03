@@ -23,6 +23,7 @@ import './tasks/batch-timelock';
 import './tasks/backup-unlock';
 import './tasks/print-roles';
 import './tasks/calculate-amount-total';
+import './tasks/transfer-timelock-ownership';
 
 const DEPLOYMENT_PRIVATE_KEY = env.parsed?.DEPLOYMENT_PRIVATE_KEY;
 const accounts = DEPLOYMENT_PRIVATE_KEY ? [DEPLOYMENT_PRIVATE_KEY] : [];
